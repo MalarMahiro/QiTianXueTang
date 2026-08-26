@@ -1,0 +1,152 @@
+import 'dart:async';
+import 'dart:developer' as developer;
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+
+/// 日志级别
+enum LogLevel {
+  debug(0),
+  info(1),
+  warn(2),
+  error(3);
+
+  final int value;
+  const LogLevel(this.value);
+}
+
+/// 七天学堂统一日志系统
+///
+/// ponytail: 全局单例，日志级别默认 info，可运行时调低到 debug 查细节。
+/// 日志同时输出到：
+///   1. dart:developer (logcat via `flutter logs`)
+///   2. 文件 (App 文档目录下 qitian_log.txt)
+///   3. 兜底: FlutterError.onError + runZonedGuarded
+class AppLogger {
+  // ─── 单例 ───────────────────────────────────────────────
+  AppLogger._internal();
+  static final AppLogger _instance = AppLogger._internal();
+  factory AppLogger() => _instance;
+
+  // ─── 状态 ───────────────────────────────────────────────
+  LogLevel _level = LogLevel.info;
+  File? _logFile;
+  IOSink? _sink;
+  bool _initialized = false;
+
+  // ─── 初始化 ─────────────────────────────────────────────
+  Future<void> init({LogLevel level = LogLevel.info}) async {
+    if (_initialized) return;
+    _level = level;
+
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      _logFile = File('${dir.path}/qitian_log.txt');
+      // 保留最近 1MB，避免日志文件无限膨胀
+      if (await _logFile!.exists()) {
+        final len = await _logFile!.length();
+        if (len > 1024 * 1024) {
+          // 截断到后半段
+          final bytes = await _logFile!.readAsBytes();
+          final half = bytes.length ~/ 2;
+          await _logFile!.writeAsBytes(bytes.sublist(half));
+        }
+      }
+      _sink = _logFile!.openWrite(mode: FileMode.append);
+      _initialized = true;
+
+      _write('I', 'Logger', '日志系统初始化完成');
+    } catch (e) {
+      // 文件写入失败也不影响 App 运行，降级到仅控制台
+      _initialized = true;
+    }
+
+    // 兜底：未捕获的 Flutter 错误
+    FlutterError.onError = (details) {
+      _write('E', 'FlutterError', '${details.exception}\n${details.stack}');
+    };
+
+    // 兜底：未捕获的异步异常
+    PlatformDispatcher.instance.onError = (exception, stack) {
+      _write('E', 'Platform', '$exception\n$stack');
+      return true;
+    };
+  }
+
+  // ─── 级别控制 ───────────────────────────────────────────
+  void setLevel(LogLevel level) => _level = level;
+
+  // ─── 核心写入 ───────────────────────────────────────────
+  void _write(String tag, String module, String message) {
+    final now = DateTime.now();
+    final ts = '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}:'
+        '${now.second.toString().padLeft(2, '0')}.'
+        '${now.millisecond.toString().padLeft(3, '0')}';
+    final line = '[$ts][$tag][$module] $message';
+
+    // 1. dart:developer → logcat
+    developer.log(message, name: 'QiTian.$module');
+
+    // 2. 文件
+    if (_sink != null) {
+      _sink!.writeln(line);
+    }
+  }
+
+  // ─── 公开方法 ───────────────────────────────────────────
+  void debug(String module, String message) {
+    if (_level.value > LogLevel.debug.value) return;
+    _write('D', module, message);
+  }
+
+  void info(String module, String message) {
+    if (_level.value > LogLevel.info.value) return;
+    _write('I', module, message);
+  }
+
+  void warn(String module, String message) {
+    if (_level.value > LogLevel.warn.value) return;
+    _write('W', module, message);
+  }
+
+  void error(String module, String message, [Object? e, StackTrace? s]) {
+    if (_level.value > LogLevel.error.value) return;
+    final buf = StringBuffer(message);
+    if (e != null) buf.write('\nException: $e');
+    if (s != null) buf.write('\n$s');
+    _write('E', module, buf.toString());
+  }
+
+  // ─── 获取日志文件路径 ───────────────────────────────────
+  Future<String?> getLogFilePath() async {
+    if (_logFile == null) return null;
+    return _logFile!.path;
+  }
+
+  /// 读取全部日志（用于导出/分享）
+  Future<String> readAll() async {
+    if (_logFile == null) return '';
+    try {
+      return await _logFile!.readAsString();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// 清空日志
+  Future<void> clear() async {
+    if (_logFile == null) return;
+    try {
+      await _logFile!.writeAsString('');
+    } catch (_) {}
+  }
+
+  void dispose() {
+    _sink?.close();
+  }
+}
+
+/// 便捷函数，在任意地方调用：logger.i('xxx') / logger.e('xxx')
+final logger = AppLogger();

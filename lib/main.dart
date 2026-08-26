@@ -4,10 +4,13 @@ import 'config/theme.dart';
 import 'providers/auth_provider.dart';
 import 'providers/exam_provider.dart';
 import 'services/dio_client.dart';
+import 'services/logger.dart';
 import 'pages/splash_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  AppLogger().init();
+  logger.info('App', '应用启动');
   DioClient().init();
   runApp(const QiTianApp());
 }

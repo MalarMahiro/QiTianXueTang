@@ -1,9 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/api.dart';
+import 'logger.dart';
 
 /// 封装Dio HTTP客户端
-/// Ponytail: 统一拦截器处理token刷新和错误码
+/// Ponytail: 统一拦截器处理token刷新、错误码和HTTP日志
 class DioClient {
   late final Dio _dio;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -33,9 +34,15 @@ class DioClient {
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         }
+        logger.debug('HTTP', '→ ${options.method} ${options.path}');
         handler.next(options);
       },
+      onResponse: (response, handler) {
+        logger.debug('HTTP', '← ${response.statusCode} ${response.requestOptions.path}');
+        handler.next(response);
+      },
       onError: (error, handler) async {
+        logger.warn('HTTP', '✗ ${error.response?.statusCode} ${error.requestOptions.path}: ${error.message}');
         if (error.response?.statusCode == 401) {
           final refreshed = await _tryRefreshToken();
           if (refreshed) {
