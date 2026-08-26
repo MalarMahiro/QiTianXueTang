@@ -18,7 +18,7 @@ class AuthService {
         if (user.token != null) {
           await _client.saveToken(user.token!, user.refreshToken);
         }
-        logger.info('Auth', '登录成功: ${user.name} / ${user.id}');
+        logger.info('Auth', '登录成功: ${user.nickname} / ${user.userId}');
         return user;
       }
       logger.warn('Auth', '登录失败: code=${response.data['code']} msg=${response.data['msg']}');
