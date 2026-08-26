@@ -36,7 +36,7 @@ class AppLogger {
   bool _initialized = false;
 
   // ─── 初始化 ─────────────────────────────────────────────
-  Future<void> init({LogLevel level = LogLevel.info}) async {
+  Future<void> init({LogLevel level = LogLevel.debug}) async {
     if (_initialized) return;
     _level = level;
 

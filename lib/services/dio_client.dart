@@ -39,6 +39,13 @@ class DioClient {
       },
       onResponse: (response, handler) {
         logger.debug('HTTP', '← ${response.statusCode} ${response.requestOptions.path}');
+        // 输出响应体前200字符，方便诊断API错误
+        final body = response.data?.toString() ?? '';
+        if (body.length > 200) {
+          logger.debug('HTTP', '  body: ${body.substring(0, 200)}...');
+        } else {
+          logger.debug('HTTP', '  body: $body');
+        }
         handler.next(response);
       },
       onError: (error, handler) async {
