@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -16,13 +15,11 @@ enum LogLevel {
   const LogLevel(this.value);
 }
 
-/// 七天学堂统一日志系统
+/// 七天学堂日志系统
 ///
-/// ponytail: 全局单例，日志级别默认 info，可运行时调低到 debug 查细节。
-/// 日志同时输出到：
-///   1. dart:developer (logcat via `flutter logs`)
-///   2. 文件 (App 文档目录下 qitian_log.txt)
-///   3. 兜底: FlutterError.onError + runZonedGuarded
+/// ponytail: 全局单例，日志只输出到文件 (App 文档目录下 qitian_log.txt)。
+/// 默认级别 debug，可运行时调高到 info 减少日志量。
+/// 兜底: FlutterError.onError + PlatformDispatcher.onError 捕获未处理异常。
 class AppLogger {
   // ─── 单例 ───────────────────────────────────────────────
   AppLogger._internal();
@@ -80,16 +77,15 @@ class AppLogger {
   // ─── 核心写入 ───────────────────────────────────────────
   void _write(String tag, String module, String message) {
     final now = DateTime.now();
-    final ts = '${now.hour.toString().padLeft(2, '0')}:'
+    final ts = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:'
         '${now.minute.toString().padLeft(2, '0')}:'
         '${now.second.toString().padLeft(2, '0')}.'
         '${now.millisecond.toString().padLeft(3, '0')}';
     final line = '[$ts][$tag][$module] $message';
 
-    // 1. dart:developer → logcat
-    developer.log(message, name: 'QiTian.$module');
-
-    // 2. 文件
+    // 只输出到文件
     if (_sink != null) {
       _sink!.writeln(line);
     }
