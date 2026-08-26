@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import '../../config/api.dart';
 import '../../models/exam_model.dart';
 import '../../models/study_report_model.dart';
