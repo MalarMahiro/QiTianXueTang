@@ -17,6 +17,8 @@ class ExamProvider extends ChangeNotifier {
 
   Future<void> loadExams() async {
     _isLoading = true;
+    // 延后一次事件循环，避免在 initState build 期间同步 notifyListeners
+    await Future<void>.delayed(Duration.zero);
     notifyListeners();
     _exams = await _examService.getExamList();
     _isLoading = false;
@@ -25,6 +27,7 @@ class ExamProvider extends ChangeNotifier {
 
   Future<void> loadExamDetail(String examId) async {
     _isLoading = true;
+    await Future<void>.delayed(Duration.zero);
     notifyListeners();
     _currentExam = await _examService.getExamDetail(examId);
     _isLoading = false;
@@ -33,6 +36,7 @@ class ExamProvider extends ChangeNotifier {
 
   Future<void> loadStudyReport() async {
     _isLoading = true;
+    await Future<void>.delayed(Duration.zero);
     notifyListeners();
     _studyReport = await _examService.getStudyReport();
     _isLoading = false;

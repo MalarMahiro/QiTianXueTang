@@ -8,7 +8,7 @@ import 'package:pointycastle/export.dart';
 ///
 /// Ponytail: 从原 APK `LocalAesCryptoUtil` + `septnetlive` 插件逆向。
 /// 机制(仅用于带 `bn`(iv) 字段的 isEncrypt 接口，如 GetUserInfo)：
-///  1. App 端用 SecureRandom 生成一把随机会话 AES-256 key(32字节)，仅存内存。
+///  1. App 端生成一把随机会话 AES-256 key(32字节)。
 ///  2. 用硬编码 RSA公钥对该 key 做 RSA/ECB/PKCS1Padding 加密 → base64 = `bk`。
 ///  3. `POST szone-my/user` 空body、header `bk` 与服务器协商绑定。
 ///  4. 后续 isEncrypt 接口请求带 `bk` 头；响应体 `data` = {isEncrypt, bn(iv), content(密文)}，
@@ -33,7 +33,7 @@ class SecureCrypto {
   }
 
   static Uint8List _randomBytes(int len) {
-    // 用 dart:math 的加密安全随机源，避免 pointycastle 随机数 API 版本差异
+    // 用 dart:math 的加密安全随机源
     final rnd = Random.secure();
     final buf = Uint8List(len);
     for (var i = 0; i < len; i++) {
@@ -42,47 +42,52 @@ class SecureCrypto {
     return buf;
   }
 
-  /// 从 DER SubjectPublicKeyInfo 线性遍历，提取 RSA modulus(n) 和 publicExponent(e)。
-  /// 该结构中仅有两个 INTEGER：n 和 e。
+  /// 从 DER SubjectPublicKeyInfo 递归解析，提取 RSA modulus(n) 和 publicExponent(e)。
+  /// 结构: SEQUENCE{ SEQUENCE{OID,NULL}, BIT STRING{ 0x00, SEQUENCE{ INTEGER(n), INTEGER(e) } } }
   static RSAPublicKey _publicKey() {
     final der = base64.decode(rsaPublicKeyB64);
-    BigInt? n, e;
-    var p = 0;
-    while (p + 1 < der.length) {
-      final tag = der[p];
-      var len = der[p + 1];
-      var vs = p + 2;
-      if (len == 0x81) {
-        len = der[p + 2];
-        vs = p + 3;
-      } else if (len == 0x82) {
-        len = (der[p + 2] << 8) | der[p + 3];
-        vs = p + 4;
+    final ints = <BigInt>[];
+    // 递归遍历 DER TLV，收集所有 INTEGER(0x02)
+    void walk(int p, int end) {
+      while (p + 1 < end) {
+        final tag = der[p];
+        var len = der[p + 1];
+        var vs = p + 2;
+        if (len == 0x81) {
+          len = der[p + 2];
+          vs = p + 3;
+        } else if (len == 0x82) {
+          len = (der[p + 2] << 8) | der[p + 3];
+          vs = p + 4;
+        }
+        if (vs + len > end) return; // 越界保护
+        if (tag == 0x02) {
+          // INTEGER：跳过可能的前导0x00
+          var start = vs;
+          var l = len;
+          if (l > 0 && der[vs] == 0) {
+            start = vs + 1;
+            l -= 1;
+          }
+          final big = Uint8List.fromList(der.sublist(start, start + l))
+              .fold(BigInt.zero, (acc, b) => (acc << 8) | BigInt.from(b));
+          ints.add(big);
+        } else if (tag == 0x03) {
+          // BIT STRING: 内容首字节是unused-bits数，之后是内嵌SEQUENCE{INTEGER n, INTEGER e}
+          walk(vs + 1, vs + len);
+        } else if (tag == 0x30 || tag == 0x31) {
+          // SEQUENCE/SET：递归深入
+          walk(vs, vs + len);
+        }
+        p = vs + len;
       }
-      if (tag == 0x02) {
-        var start = vs;
-        var l = len;
-        if (l > 0 && der[vs] == 0) {
-          start = vs + 1;
-          l -= 1;
-        }
-        var hex = StringBuffer();
-        for (var i = start; i < start + l; i++) {
-          hex.write(der[i].toRadixString(16).padLeft(2, '0'));
-        }
-        final big = BigInt.parse(hex.toString(), radix: 16);
-        if (n == null) {
-          n = big;
-        } else if (e == null) {
-          e = big;
-        }
-      }
-      p = vs + len;
     }
-    if (n == null || e == null) {
-      throw StateError('RSA公钥解析失败: 未找到 n/e');
+
+    walk(0, der.length);
+    if (ints.length < 2) {
+      throw StateError('RSA公钥解析失败: 未找到 n/e (found ${ints.length})');
     }
-    return RSAPublicKey(n, e);
+    return RSAPublicKey(ints[0], ints[1]);
   }
 
   /// 生成协商头 `bk` = RSA 公钥加密(会话key的base64字符串)。
