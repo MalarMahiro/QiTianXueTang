@@ -13,27 +13,30 @@ class SplashPage extends StatefulWidget {
 }
 
 class _SplashPageState extends State<SplashPage> {
+  bool _navigated = false;
+
   @override
   void initState() {
     super.initState();
-    _checkAuth();
+    // 等待认证初始化完成后再决定跳转
+    _waitAndRoute();
   }
 
-  Future<void> _checkAuth() async {
+  Future<void> _waitAndRoute() async {
     final auth = context.read<AuthProvider>();
-    await Future.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
-    if (auth.isLoggedIn) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomePage()),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-      );
+    // 等 init() 完成（最多10秒兜底）
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (!auth.isInitialized && DateTime.now().isBefore(deadline)) {
+      await Future.delayed(const Duration(milliseconds: 100));
     }
+    if (!mounted || _navigated) return;
+    _navigated = true;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => auth.isLoggedIn ? const HomePage() : const LoginPage(),
+      ),
+    );
   }
 
   @override

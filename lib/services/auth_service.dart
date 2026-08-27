@@ -1,6 +1,7 @@
 import '../../models/user_model.dart';
 import 'dio_client.dart';
 import 'logger.dart';
+import 'secure_crypto.dart';
 
 class AuthService {
   final DioClient _client = DioClient();
@@ -20,10 +21,14 @@ class AuthService {
   }
 
   /// 获取用户信息：GET szone-my.7net.cc/userInfo/GetUserInfo
-  /// 响应为 AES 加密，dio_client 已解密。
+  /// 响应为会话AES加密(GCM)，dio_client 已解密。
   Future<UserModel?> getUserInfo() async {
     try {
       logger.info('Auth', '获取用户信息');
+      // 会话AES key是内存态，重启后需重新协商
+      if (!SecureCrypto.hasKey) {
+        await _client.negotiateKey();
+      }
       final raw = await _client.getUserInfoRaw();
       if (raw == null) return null;
       final token = await _client.getToken();

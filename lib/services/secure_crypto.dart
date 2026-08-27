@@ -94,7 +94,9 @@ class SecureCrypto {
   static String buildBk() {
     if (_aesKeyBase64 == null) generateSessionKey();
     final pk = _publicKey();
-    final cipher = PKCS1Encoding(RSAEngine())..init(true, PublicKeyParameter(pk));
+    // 显式泛型：RSAEngine.init 需要 PublicKeyParameter<RSAPublicKey>
+    final cipher = PKCS1Encoding(RSAEngine())
+      ..init(true, PublicKeyParameter<RSAPublicKey>(pk));
     final data = utf8.encode(_aesKeyBase64!);
     final out = cipher.process(data);
     return base64.encode(out);
