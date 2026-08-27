@@ -36,8 +36,14 @@ class DioClient {
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
-        // 认证头 Token(非Bearer)
-        final token = await _storage.read(key: _tokenKey);
+        // 认证头 Token(非Bearer)。优先内存缓存，其次secure storage。
+        var token = _memToken;
+        if (token == null) {
+          try {
+            token = await _storage.read(key: _tokenKey);
+            _memToken = token;
+          } catch (_) {}
+        }
         if (token != null && token.isNotEmpty) {
           options.headers['Token'] = token;
         }
@@ -125,12 +131,26 @@ class DioClient {
   }
 
   Future<void> saveToken(String token) async {
-    await _storage.write(key: _tokenKey, value: token);
+    _memToken = token; // 先写内存，保证会话可用
+    try {
+      await _storage.write(key: _tokenKey, value: token);
+    } catch (_) {}
   }
 
-  Future<String?> getToken() => _storage.read(key: _tokenKey);
+  Future<String?> getToken() async {
+    if (_memToken != null) return _memToken;
+    String? token;
+    try {
+      token = await _storage.read(key: _tokenKey);
+      _memToken = token;
+    } catch (_) {}
+    return token;
+  }
 
   Future<void> clearToken() async {
-    await _storage.delete(key: _tokenKey);
+    _memToken = null;
+    try {
+      await _storage.delete(key: _tokenKey);
+    } catch (_) {}
   }
 }
