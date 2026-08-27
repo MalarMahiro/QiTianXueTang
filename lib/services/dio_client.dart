@@ -88,9 +88,18 @@ class DioClient {
       options: Options(contentType: Headers.formUrlEncodedContentType),
     );
     final body = resp.data;
-    logger.debug('HTTP', '← login body: ${body.toString()}');
-    if (body is Map && body['status'] == 200 && body['data'] != null) {
-      final d = body['data'] as Map;
+    logger.debug('HTTP', '← login body: ${body.toString()}  type=${body.runtimeType}');
+    // 兼容 String(原始JSON) 与 Map(已解析) 两种响应体
+    Map<String, dynamic>? parsed;
+    if (body is Map) {
+      parsed = (body as Map).cast<String, dynamic>();
+    } else if (body is String) {
+      try {
+        parsed = (jsonDecode(body) as Map).cast<String, dynamic>();
+      } catch (_) {}
+    }
+    if (parsed != null && parsed['status'] == 200 && parsed['data'] != null) {
+      final d = parsed['data'] as Map;
       final token = d['token']?.toString();
       if (token != null && token.isNotEmpty) {
         // token 已成功获取，登录即成功。持久化失败不阻断登录（有内存 + AuthProvider 持有）。
@@ -99,8 +108,12 @@ class DioClient {
         } catch (e) {
           logger.warn('HTTP', '登录token持久化失败(忽略): $e');
         }
+        logger.debug('HTTP', '← login token 提取成功: ${token.substring(0, 10)}...');
         return token;
       }
+      logger.warn('HTTP', '← login data.token 为空: data=$d');
+    } else {
+      logger.warn('HTTP', '← login 响应结构异常: body=$body type=${body.runtimeType}');
     }
     return null;
   }
