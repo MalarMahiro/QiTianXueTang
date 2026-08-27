@@ -1,3 +1,4 @@
+/// 用户模型
 class UserModel {
   final String userId;
   final String? phone;
@@ -9,6 +10,11 @@ class UserModel {
   final String? gradeName;
   final String? schoolName;
   final String? cityName;
+  final String? schoolGuid;
+  final String? grade;
+  final String? ruCode;
+  final String? cityCode;
+  final String? studentName;
 
   UserModel({
     required this.userId,
@@ -21,37 +27,50 @@ class UserModel {
     this.gradeName,
     this.schoolName,
     this.cityName,
+    this.schoolGuid,
+    this.grade,
+    this.ruCode,
+    this.cityCode,
+    this.studentName,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
-    // 兼容 GetUserInfo 各种字段命名（原App前端用 userCode/grade/nickName 等）
     String _s(Object? v) => v?.toString() ?? '';
+    String _pick(List keys) {
+      for (final k in keys) {
+        final v = json[k];
+        if (v != null && _s(v).isNotEmpty) return _s(v);
+      }
+      return '';
+    }
     return UserModel(
-      userId: _s(json['userId'] ?? json['userCode'] ?? json['UserCode']),
-      phone: _s(json['phone'] ?? json['mobile']).isNotEmpty
-          ? _s(json['phone'] ?? json['mobile'])
-          : null,
-      nickname: _s(json['nickname'] ?? json['nickName'] ?? json['realName']).isNotEmpty
-          ? _s(json['nickname'] ?? json['nickName'] ?? json['realName'])
-          : null,
-      avatar: _s(json['avatar'] ?? json['headImgUrl'] ?? json['headImg']).isNotEmpty
-          ? _s(json['avatar'] ?? json['headImgUrl'] ?? json['headImg'])
-          : null,
-      token: _s(json['token']).isNotEmpty ? _s(json['token']) : null,
-      refreshToken: _s(json['refreshToken'] ?? json['refresh_token']).isNotEmpty
-          ? _s(json['refreshToken'] ?? json['refresh_token'])
-          : null,
+      userId: _pick(['userId', 'userCode', 'UserCode']),
+      phone: _pick(['phone', 'mobile']).isNotEmpty ? _pick(['phone', 'mobile']) : null,
+      nickname: _pick(['nickname', 'nickName', 'realName']).isNotEmpty
+          ? _pick(['nickname', 'nickName', 'realName']) : null,
+      avatar: _pick(['avatar', 'headImgUrl', 'headImg']).isNotEmpty
+          ? _pick(['avatar', 'headImgUrl', 'headImg']) : null,
+      token: _pick(['token']).isNotEmpty ? _pick(['token']) : null,
+      refreshToken: _pick(['refreshToken', 'refresh_token']).isNotEmpty
+          ? _pick(['refreshToken', 'refresh_token']) : null,
       gradeId: (json['gradeId'] ?? json['gradeId2']) as int?,
-      gradeName:
-          _s(json['gradeName'] ?? json['grade'] ?? json['gradeCode']).isNotEmpty
-              ? _s(json['gradeName'] ?? json['grade'] ?? json['gradeCode'])
-              : null,
-      schoolName: _s(json['schoolName'] ?? json['school']).isNotEmpty
-          ? _s(json['schoolName'] ?? json['school'])
-          : null,
-      cityName: _s(json['cityName'] ?? json['city'] ?? json['cityCode']).isNotEmpty
-          ? _s(json['cityName'] ?? json['city'] ?? json['cityCode'])
-          : null,
+      gradeName: _pick(['gradeName', 'grade', 'gradeCode']).isNotEmpty
+          ? _pick(['gradeName', 'grade', 'gradeCode']) : null,
+      schoolName: _pick(['schoolName', 'school']).isNotEmpty
+          ? _pick(['schoolName', 'school']) : null,
+      cityName: _pick(['cityName', 'city', 'cityCode']).isNotEmpty
+          ? _pick(['cityName', 'city']) : null,
+      schoolGuid: _pick(['schoolGuid', 'schoolCode', 'guid', 'schoolId']).isNotEmpty
+          ? _pick(['schoolGuid', 'schoolCode', 'guid', 'schoolId']) : null,
+      grade: _pick(['currentGrade', 'gradeCode', 'gradeId', 'grade']).isNotEmpty
+          ? _pick(['currentGrade', 'gradeCode', 'gradeId', 'grade'])
+          : _pick(['gradeName', 'grade']).isNotEmpty ? _pick(['gradeName', 'grade']) : null,
+      ruCode: _pick(['ruCode', 'regionCode', 'areaCode']).isNotEmpty
+          ? _pick(['ruCode', 'regionCode', 'areaCode']) : null,
+      cityCode: _pick(['cityCode', 'cityId']).isNotEmpty
+          ? _pick(['cityCode', 'cityId']) : null,
+      studentName: _pick(['studentName', 'realName', 'name', 'nickname']).isNotEmpty
+          ? _pick(['studentName', 'realName', 'name', 'nickname']) : null,
     );
   }
 
@@ -66,6 +85,11 @@ class UserModel {
         'gradeName': gradeName,
         'schoolName': schoolName,
         'cityName': cityName,
+        'schoolGuid': schoolGuid,
+        'grade': grade,
+        'ruCode': ruCode,
+        'cityCode': cityCode,
+        'studentName': studentName,
       };
 
   bool get isLoggedIn => token != null && token!.isNotEmpty;
@@ -81,5 +105,10 @@ class UserModel {
         gradeName: gradeName,
         schoolName: schoolName,
         cityName: cityName,
+        schoolGuid: schoolGuid,
+        grade: grade,
+        ruCode: ruCode,
+        cityCode: cityCode,
+        studentName: studentName,
       );
 }

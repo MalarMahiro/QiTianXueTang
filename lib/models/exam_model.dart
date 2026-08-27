@@ -48,6 +48,23 @@ class ExamModel {
           .toList(),
     );
   }
+
+  /// 考试列表解析：来自 getClaimExams 的 {examGuid,examName,type,time,score,aiState...}
+  factory ExamModel.fromClaimJson(dynamic json) {
+    final m = json is Map ? json : <String, dynamic>{};
+    double? _d(Object? v) => (v is num) ? v.toDouble() : double.tryParse(v?.toString() ?? '');
+    return ExamModel(
+      examId: m['examGuid']?.toString() ?? '',
+      examName: m['examName']?.toString() ?? '',
+      examTime: m['time']?.toString(),
+      status: m['type']?.toString(),
+      gradeName: m['grade']?.toString(),
+      totalScore: _d(m['fullScore']) ?? _d(m['totalScore']),
+      studentScore: _d(m['score']),
+      // aiState/authView 用于详情是否可用
+      subject: m['aiState']?.toString(),
+    );
+  }
 }
 
 class SubjectScore {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../providers/exam_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../models/exam_model.dart';
 import 'exam_detail_page.dart';
 
@@ -16,7 +17,19 @@ class _ExamListPageState extends State<ExamListPage> {
   @override
   void initState() {
     super.initState();
-    context.read<ExamProvider>().loadExams();
+    // 配置业务上下文(需要登录用户信息)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = context.read<AuthProvider>().user;
+      context.read<ExamProvider>().updateContext(
+            schoolGuid: user?.schoolGuid,
+            grade: user?.grade,
+          );
+      final provider = context.read<ExamProvider>();
+      if (user?.studentName != null) {
+        provider.loadUnClaimCount(user!.studentName!);
+      }
+      provider.loadExams();
+    });
   }
 
   @override

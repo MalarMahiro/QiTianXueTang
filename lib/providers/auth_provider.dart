@@ -31,6 +31,9 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 供下拉刷新等主动触发：重新拉取完整用户信息
+  Future<void> refreshUserInfo() => _refreshUserInfo();
+
   Future<void> _refreshUserInfo() async {
     try {
       final user = await _authService.getUserInfo();
@@ -66,5 +69,40 @@ class AuthProvider extends ChangeNotifier {
     await _authService.logout();
     _user = null;
     notifyListeners();
+  }
+
+  /// 编辑昵称：调用服务端并本地更新
+  Future<bool> updateNickname(String nickName) async {
+    try {
+      final d = await DioClient().updateNickname(nickName);
+      if (d != null) {
+        // 服务端返回 auditNickName/nickName，优先取 nickName
+        final newName = d['nickName']?.toString() ?? nickName;
+        if (_user != null) {
+          _user = UserModel(
+            userId: _user!.userId,
+            phone: _user!.phone,
+            nickname: newName,
+            avatar: _user!.avatar,
+            token: _user!.token,
+            refreshToken: _user!.refreshToken,
+            gradeId: _user!.gradeId,
+            gradeName: _user!.gradeName,
+            schoolName: _user!.schoolName,
+            cityName: _user!.cityName,
+            schoolGuid: _user!.schoolGuid,
+            grade: _user!.grade,
+            ruCode: _user!.ruCode,
+            cityCode: _user!.cityCode,
+            studentName: _user!.studentName,
+          );
+          notifyListeners();
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
   }
 }

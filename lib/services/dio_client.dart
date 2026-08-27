@@ -162,16 +162,22 @@ class DioClient {
       final body = resp.data;
       if (body is Map && body['status'] == 200 && body['data'] is Map) {
         final data = body['data'] as Map;
+        Map<String, dynamic>? result;
         // 若已解密且有 decryptedData 直接用
         if (data['decryptedData'] is Map) {
-          return (data['decryptedData'] as Map).cast<String, dynamic>();
+          result = (data['decryptedData'] as Map).cast<String, dynamic>();
+        } else {
+          // 否则解析 content
+          final content = data['content']?.toString();
+          if (content != null && content.isNotEmpty) {
+            final decoded = jsonDecode(content);
+            result = (decoded as Map).cast<String, dynamic>();
+          }
         }
-        // 否则解析 content
-        final content = data['content']?.toString();
-        if (content != null && content.isNotEmpty) {
-          final decoded = jsonDecode(content);
-          return (decoded as Map).cast<String, dynamic>();
+        if (result != null) {
+          logger.debug('HTTP', '← GetUserInfo 字段: ${result.keys.toList()}');
         }
+        return result;
       }
       return null;
     } catch (e) {
@@ -181,7 +187,7 @@ class DioClient {
   }
 
   Future<void> saveToken(String token) async {
-    _memToken = token; // 先写内存，保证会话可用
+    _memToken = token;
     try {
       await _storage.write(key: _tokenKey, value: token);
     } catch (_) {}
@@ -202,5 +208,155 @@ class DioClient {
     try {
       await _storage.delete(key: _tokenKey);
     } catch (_) {}
+  }
+
+  // ===== 业务接口 =====
+  // 统一取响应 data 对象：解密(AES-ECB待bn/无bn)后返回 data 主体(Map/List)
+  dynamic _dataOf(dynamic body) {
+    if (body is Map && body['status'] == 200 && body['data'] != null) {
+      final data = body['data'];
+      if (data is Map) {
+        // data.isEncrypt==true → interceptor 已写 decryptedData
+        if (data['decryptedData'] != null) return data['decryptedData'];
+        // data.content 是 AES-ECB 密文但无 bn → 手动解密(兼容无解密兜底)
+        if (data['content'] != null && data['isEncrypt'] == true) {
+          final decrypted = QitianCrypto.aesEcbDecryptBase64(data['content'].toString());
+          try {
+            return (jsonDecode(decrypted) as Map).cast<String, dynamic>();
+          } catch (_) {
+            return decrypted;
+          }
+        }
+        return data;
+      }
+      return data;
+    }
+    return null;
+  }
+
+  /// 考试列表 (AES-ECB): GET getClaimExams
+  Future<Map<String, dynamic>?> getClaimExams({
+    int startIndex = 0, int rows = 20,
+    required String schoolGuid, required String grade,
+  }) async {
+    try {
+      final resp = await _dio.get('${ApiConfig.baseScore}${ApiConfig.examGetClaimExams}', queryParameters: {
+        'startIndex': startIndex, 'rows': rows, 'schoolGuid': schoolGuid, 'grade': grade,
+      });
+      final d = _dataOf(resp.data);
+      return d is Map ? d.cast<String, dynamic>() : null;
+    } catch (e) {
+      logger.error('HTTP', 'getClaimExams 失败', e);
+      return null;
+    }
+  }
+
+  /// 未认领考试数 (AES-ECB): GET getExamCount
+  Future<Map<String, dynamic>?> getExamCount({
+    required String studentName, required String schoolGuid, required String grade,
+  }) async {
+    try {
+      final resp = await _dio.get('${ApiConfig.baseScore}${ApiConfig.examGetExamCount}', queryParameters: {
+        'studentName': studentName, 'schoolGuid': schoolGuid, 'grade': grade,
+      });
+      final d = _dataOf(resp.data);
+      return d is Map ? d.cast<String, dynamic>() : null;
+    } catch (e) {
+      logger.error('HTTP', 'getExamCount 失败', e);
+      return null;
+    }
+  }
+
+  /// 首页宫格导航: GET UNavigation/list (明文)
+  Future<List<String>?> getNavigation({
+    required String grade, required String schoolGuid,
+    required String ruCode, required String cityCode, required String currentGrade,
+  }) async {
+    try {
+      final resp = await _dio.get('${ApiConfig.baseIndex}${ApiConfig.navigationList}', queryParameters: {
+        'grade': grade, 'schoolGuid': schoolGuid, 'ruCode': ruCode,
+        'cityCode': cityCode, 'currentGrade': currentGrade,
+      });
+      final d = _dataOf(resp.data);
+      if (d is Map) {
+        final navs = d['navigations'];
+        if (navs is List) return navs.map((e) => e.toString()).toList();
+      }
+      return null;
+    } catch (e) {
+      logger.error('HTTP', 'getNavigation 失败', e);
+      return null;
+    }
+  }
+
+  /// 首页板块: GET UPlate/plates (明文)
+  Future<List<dynamic>?> getPlates({required String grade, required String currentGrade}) async {
+    try {
+      final resp = await _dio.get('${ApiConfig.baseIndex}${ApiConfig.plateList}', queryParameters: {
+        'grade': grade, 'currentGrade': currentGrade,
+      });
+      final d = _dataOf(resp.data);
+      return d is Map ? (d['list'] as List?)?.toList() : null;
+    } catch (e) {
+      logger.error('HTTP', 'getPlates 失败', e);
+      return null;
+    }
+  }
+
+  /// 首页广告: GET uad/getAdInfo (明文)
+  Future<List<dynamic>?> getAdInfo({
+    required String positionCode, required String cityCode, required String ruCode,
+    required String grade, required String schoolGuid, required String currentGrade,
+  }) async {
+    try {
+      final resp = await _dio.get('${ApiConfig.baseIndex}${ApiConfig.getAdInfo}', queryParameters: {
+        'positionCode': positionCode, 'cityCode': cityCode, 'ruCode': ruCode,
+        'grade': grade, 'schoolGuid': schoolGuid, 'currentGrade': currentGrade,
+      });
+      final d = _dataOf(resp.data);
+      return d is Map ? (d['list'] as List?)?.toList() : null;
+    } catch (e) {
+      logger.error('HTTP', 'getAdInfo 失败', e);
+      return null;
+    }
+  }
+
+  /// 学情数据: GET userInfo/statisticalRefresh (明文)
+  Future<Map<String, dynamic>?> getStatistical() async {
+    try {
+      final resp = await _dio.get('${ApiConfig.baseUser}${ApiConfig.userInfoStatistical}');
+      final d = _dataOf(resp.data);
+      return d is Map ? d.cast<String, dynamic>() : null;
+    } catch (e) {
+      logger.error('HTTP', 'getStatistical 失败', e);
+      return null;
+    }
+  }
+
+  /// 消息Top: POST Message/Top (明文)
+  Future<Map<String, dynamic>?> getMessageTop() async {
+    try {
+      final resp = await _dio.post('${ApiConfig.baseUser}${ApiConfig.messageTop}',
+          options: Options(contentType: Headers.formUrlEncodedContentType));
+      final d = _dataOf(resp.data);
+      return d is Map ? d.cast<String, dynamic>() : null;
+    } catch (e) {
+      logger.error('HTTP', 'getMessageTop 失败', e);
+      return null;
+    }
+  }
+
+  /// 编辑昵称: POST UserInfo/UpdateUserInfo (form nickName)
+  Future<Map<String, dynamic>?> updateNickname(String nickName) async {
+    try {
+      final resp = await _dio.post('${ApiConfig.baseUser}${ApiConfig.userInfoUpdate}',
+          data: {'nickName': nickName},
+          options: Options(contentType: Headers.formUrlEncodedContentType));
+      final d = _dataOf(resp.data);
+      return d is Map ? d.cast<String, dynamic>() : null;
+    } catch (e) {
+      logger.error('HTTP', 'updateNickname 失败', e);
+      return null;
+    }
   }
 }

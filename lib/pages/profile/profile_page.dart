@@ -17,38 +17,41 @@ class ProfilePage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // 用户信息
+          // 用户信息 (点击编辑昵称)
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 32,
-                    backgroundColor: AppTheme.primaryColor,
-                    backgroundImage: user?.avatar != null ? NetworkImage(user!.avatar!) : null,
-                    child: user?.avatar == null
-                        ? Text(
-                            (user?.nickname ?? '?').substring(0, 1),
-                            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(user?.nickname ?? '同学',
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 4),
-                        Text(user?.phone ?? '', style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
-                        if (user?.schoolName != null)
-                          Text(user!.schoolName!, style: const TextStyle(fontSize: 13, color: AppTheme.textHint)),
-                      ],
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => _editNickname(context),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 32,
+                      backgroundColor: AppTheme.primaryColor,
+                      backgroundImage: user?.avatar != null ? NetworkImage(user!.avatar!) : null,
+                      child: user?.avatar == null
+                          ? Text(
+                              ((user?.nickname ?? '').isEmpty ? '?' : user!.nickname!.substring(0, 1)),
+                              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                            )
+                          : null,
                     ),
-                  ),
-                  const Icon(Icons.chevron_right),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(user?.nickname ?? '同学',
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Text(user?.phone ?? '', style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                          if (user?.schoolName != null)
+                            Text(user!.schoolName!, style: const TextStyle(fontSize: 13, color: AppTheme.textHint)),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right),
                 ],
               ),
             ),
@@ -76,6 +79,37 @@ class ProfilePage extends StatelessWidget {
       trailing: const Icon(Icons.chevron_right, size: 18),
       onTap: onTap,
     );
+  }
+
+  /// 编辑昵称对话框
+  Future<void> _editNickname(BuildContext context) async {
+    final controller = TextEditingController(text: context.read<AuthProvider>().user?.nickname ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('修改昵称'),
+        content: TextField(
+          controller: controller,
+          maxLength: 16,
+          decoration: const InputDecoration(hintText: '请输入新昵称'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+        ],
+      ),
+    );
+    if (saved == true) {
+      final name = controller.text.trim();
+      if (name.isNotEmpty) {
+        final ok = await context.read<AuthProvider>().updateNickname(name);
+        if (context.mounted && ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('昵称已更新')),
+          );
+        }
+      }
+    }
   }
 
   Future<void> _logout(BuildContext context) async {

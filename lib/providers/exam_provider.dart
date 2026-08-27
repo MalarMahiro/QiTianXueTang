@@ -9,37 +9,36 @@ class ExamProvider extends ChangeNotifier {
   ExamModel? _currentExam;
   StudyReportModel? _studyReport;
   bool _isLoading = false;
+  int _unClaimCount = 0;
 
   List<ExamModel> get exams => _exams;
   ExamModel? get currentExam => _currentExam;
   StudyReportModel? get studyReport => _studyReport;
   bool get isLoading => _isLoading;
+  int get unClaimCount => _unClaimCount;
 
-  Future<void> loadExams() async {
+  /// 登录后/用户信息更新后配置业务上下文
+  void updateContext({String? schoolGuid, String? grade}) {
+    _examService.setContext(schoolGuid: schoolGuid, grade: grade);
+  }
+
+  Future<void> loadExams({int page = 1}) async {
     _isLoading = true;
-    // 延后一次事件循环，避免在 initState build 期间同步 notifyListeners
     await Future<void>.delayed(Duration.zero);
     notifyListeners();
-    _exams = await _examService.getExamList();
+    final list = await _examService.getExamList(page: page, pageSize: 20);
+    _exams = page == 1 ? list : [..._exams, ...list];
     _isLoading = false;
     notifyListeners();
   }
 
-  Future<void> loadExamDetail(String examId) async {
-    _isLoading = true;
-    await Future<void>.delayed(Duration.zero);
-    notifyListeners();
-    _currentExam = await _examService.getExamDetail(examId);
-    _isLoading = false;
+  Future<void> loadUnClaimCount(String studentName) async {
+    final c = await _examService.getUnClaimCount(studentName: studentName);
+    _unClaimCount = c;
     notifyListeners();
   }
 
-  Future<void> loadStudyReport() async {
-    _isLoading = true;
-    await Future<void>.delayed(Duration.zero);
-    notifyListeners();
-    _studyReport = await _examService.getStudyReport();
-    _isLoading = false;
-    notifyListeners();
-  }
+  // 考试详情/学情报告：下一批实现
+  Future<void> loadExamDetail(String examId) async {}
+  Future<void> loadStudyReport() async {}
 }
