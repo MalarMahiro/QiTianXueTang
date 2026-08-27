@@ -16,7 +16,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = "17"
     }
 
     defaultConfig {
@@ -40,5 +40,5 @@ flutter {
 
 dependencies {
     // MTDataFilesProvider：为 MT 管理器注入文件提供器（仅 debug 版）
-    debugImplementation 'com.github.L-JINBIN:MTDataFilesProvider:v1.0.0'
+    debugImplementation("com.github.L-JINBIN:MTDataFilesProvider:v1.0.0")
 }
