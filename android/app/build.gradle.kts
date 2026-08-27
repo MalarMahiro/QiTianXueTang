@@ -37,3 +37,8 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // MTDataFilesProvider：为 MT 管理器注入文件提供器（仅 debug 版）
+    debugImplementation 'com.github.L-JINBIN:MTDataFilesProvider:v1.0.0'
+}
