@@ -47,3 +47,6 @@ ios/Flutter/.last_build_id
 migrate_working_dir/
 app.*.symbols
 app.*.map.json
+
+#Operit AI
+.backup

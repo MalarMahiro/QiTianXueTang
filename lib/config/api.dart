@@ -1,38 +1,49 @@
 /// 七天学堂 API 配置
-/// Ponytail: 从原Cordova App反编译提取的API端点
+/// Ponytail: 根据真实抓包(HAR)修正。原App按业务拆分子域名，非 /api/v1。
+/// 原App: var a={INDEX:l("index"),USER:l("my"),HOMEWORK:l("homework"),SCORE:l("score")}
+///        l(t) => "https://szone-"+t+".7net.cc/"
 class ApiConfig {
-  static const String baseUrl = 'https://api.7net.cc';
+  // 各业务子域名
+  static const String baseUser = 'https://szone-my.7net.cc';
+  static const String baseScore = 'https://szone-score.7net.cc';
+  static const String baseHomework = 'https://szone-homework.7net.cc';
+  static const String baseIndex = 'https://szone-index.7net.cc';
+  static const String baseActivity = 'https://szone-activity.7net.cc';
   static const String h5Base = 'https://h5.7net.cc';
 
-  // 用户相关
-  static const String login = '/api/v1/user/login';
-  static const String smsCode = '/api/v1/user/sms/code';
-  static const String userInfo = '/api/v1/user/info';
-  static const String refreshToken = '/api/v1/user/token/refresh';
+  /// 认证头 Version 值 (原App: o="4.6.1")
+  static const String version = '4.6.1';
 
-  // 成绩相关
-  static const String examList = '/api/v1/exam/list';
-  static const String examDetail = '/api/v1/exam/detail';
-  static const String examScore = '/api/v1/exam/score';
-  static const String examAnalysis = '/api/v1/exam/analysis';
-  static const String subjectScore = '/api/v1/exam/subject/score';
+  // 用户/认证 (szone-my)
+  static const String login = '/login';                   // POST x-www-form-urlencoded: userCode+password
+  static const String userInfo = '/userInfo/GetUserInfo'; // GET, 响应AES加密
+  static const String userInfoStatistical = '/userInfo/statisticalRefresh'; // GET: studyTotalHour/collectionQuantity
+  static const String userInfoUpdate = '/UserInfo/UpdateUserInfo';         // POST form: nickName
+  static const String messageTop = '/Message/Top';                          // POST (空)消息
+  static const String unionVipIsShow = '/UnionVip/IsShow';                  // POST form: grade
+  static const String sdxOpen = '/SDX/Open';                                // POST form: currentGrade+ruCode
 
-  // 学情
-  static const String studyReport = '/api/v1/study/report';
-  static const String studyTrend = '/api/v1/study/trend';
+  // 成绩 (szone-score)
+  static const String ganKaoSchoolIsOpen = '/GanKao/SchoolIsOpen'; // POST form: grade+schoolGuid -> {isOpen}
+  static const String examGetClaimExams = '/exam/getClaimExams';   // GET startIndex+rows+schoolGuid+grade, AES加密
+  static const String examGetExamCount = '/exam/getExamCount';     // GET studentName+schoolGuid+grade, AES加密
+  static const String entranceConfig = '/Entrance/Config';         // GET schoolGuid+grade+types, 明文
 
-  // 课程
-  static const String courseList = '/api/v1/course/list';
-  static const String courseDetail = '/api/v1/course/detail';
-  static const String videoList = '/api/v1/video/list';
+  // 作业 (szone-homework)
+  static const String examHomeworkCheckOpen = '/ExamHomeWork/CheckSchoolIsOpen'; // POST form: studentName+ruCode+gradeCode
 
-  // AI
-  static const String aiAnalysis = '/api/v1/ai/analysis';
-  static const String aiChat = '/api/v1/ai/chat';
+  // 首页 (szone-index)
+  static const String getAdInfo = '/uad/getAdInfo';       // GET positionCode+cityCode+ruCode+grade+schoolGuid+currentGrade
+  static const String navigationList = '/UNavigation/list'; // GET grade+schoolGuid+ruCode+cityCode+currentGrade
+  static const String plateList = '/UPlate/plates';         // GET grade+currentGrade
 
-  // 选科/志愿
-  static const String subjectSelection = '/api/v1/subject/selection';
-  static const String volunteerRecommend = '/api/v1/volunteer/recommend';
+  /// 响应AES解密密钥。原App: h = enc.Utf8.parse("c0f1a30c.."), mode:ECB padding:Pkcs7
+  /// 响应当 data.isEncrypt==true 时 AesEcb.decrypt(content) 得到 JSON。
+  /// 注意是 UTF-8 解析该字符串作为 256-bit key（32字节），非 hex。
+  static const String aesKey = 'c0f1a30cba2147949ee71cf71cba3c20';
+
+  // 密码加密见 QitianCrypto.encryptPassword:
+  //   password = base64( 明文密码 + 常量后缀 "{MTgyMjU2MDU0MjF7c3pvbmV9}" )
 
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 15);

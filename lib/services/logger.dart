@@ -17,7 +17,7 @@ enum LogLevel {
 
 /// 七天学堂日志系统
 ///
-/// ponytail: 全局单例，日志只输出到文件 (App 文档目录下 qitian_log.txt)。
+/// ponytail: 全局单例，日志只输出到文件 (外部存储 qitian_log.txt)。
 /// 默认级别 debug，可运行时调高到 info 减少日志量。
 /// 兜底: FlutterError.onError + PlatformDispatcher.onError 捕获未处理异常。
 class AppLogger {
@@ -38,7 +38,14 @@ class AppLogger {
     _level = level;
 
     try {
-      final dir = await getApplicationDocumentsDirectory();
+      // 优先外部存储 (/storage/emulated/0/Android/data/<pkg>/files/)
+      Directory? dir;
+      try {
+        dir = await getExternalStorageDirectory();
+      } catch (_) {}
+      // 兜底内部存储
+      dir ??= await getApplicationDocumentsDirectory();
+
       _logFile = File('${dir.path}/qitian_log.txt');
       // 保留最近 1MB，避免日志文件无限膨胀
       if (await _logFile!.exists()) {
@@ -53,7 +60,7 @@ class AppLogger {
       _sink = _logFile!.openWrite(mode: FileMode.append);
       _initialized = true;
 
-      _write('I', 'Logger', '日志系统初始化完成');
+      _write('I', 'Logger', '日志系统初始化完成: ${_logFile!.path}');
     } catch (e) {
       // 文件写入失败也不影响 App 运行，降级到仅控制台
       _initialized = true;

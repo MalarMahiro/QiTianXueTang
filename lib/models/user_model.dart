@@ -52,4 +52,17 @@ class UserModel {
       };
 
   bool get isLoggedIn => token != null && token!.isNotEmpty;
+
+  UserModel copyWith({String? token}) => UserModel(
+        userId: userId,
+        phone: phone,
+        nickname: nickname,
+        avatar: avatar,
+        token: token ?? this.token,
+        refreshToken: refreshToken,
+        gradeId: gradeId,
+        gradeName: gradeName,
+        schoolName: schoolName,
+        cityName: cityName,
+      );
 }

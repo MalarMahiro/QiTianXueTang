@@ -1,15 +1,17 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/api.dart';
 import 'logger.dart';
+import 'qitian_crypto.dart';
 
 /// 封装Dio HTTP客户端
-/// Ponytail: 统一拦截器处理token刷新、错误码和HTTP日志
+/// Ponytail: 依据真实抓包。认证用 Token + Version 头(非Bearer)。响应若 isEncrypt 则AES解密。
 class DioClient {
   late final Dio _dio;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   static const String _tokenKey = 'auth_token';
-  static const String _refreshTokenKey = 'refresh_token';
 
   DioClient._internal();
   static final DioClient _instance = DioClient._internal();
@@ -19,99 +21,109 @@ class DioClient {
 
   void init() {
     _dio = Dio(BaseOptions(
-      baseUrl: ApiConfig.baseUrl,
       connectTimeout: ApiConfig.connectTimeout,
       receiveTimeout: ApiConfig.receiveTimeout,
       headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        'Accept-Charset': 'UTF-8',
+        'Version': ApiConfig.version,
+        'User-Agent':
+            'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome Mobile Safari/537.36',
+        'Accept-Encoding': 'gzip',
       },
     ));
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        // 认证头 Token(非Bearer)
         final token = await _storage.read(key: _tokenKey);
-        if (token != null) {
-          options.headers['Authorization'] = 'Bearer $token';
+        if (token != null && token.isNotEmpty) {
+          options.headers['Token'] = token;
         }
-        logger.debug('HTTP', '→ ${options.method} ${options.path}');
+        logger.debug('HTTP', '→ ${options.method} ${options.baseUrl}${options.path}');
         handler.next(options);
       },
-      onResponse: (response, handler) {
+      onResponse: (response, handler) async {
         logger.debug('HTTP', '← ${response.statusCode} ${response.requestOptions.path}');
-        // 输出响应体前200字符，方便诊断API错误
-        final body = response.data?.toString() ?? '';
-        if (body.length > 200) {
-          logger.debug('HTTP', '  body: ${body.substring(0, 200)}...');
-        } else {
-          logger.debug('HTTP', '  body: $body');
+        // 解密响应体: data.isEncrypt==true → AES解密 content
+        try {
+          final data = response.data;
+          if (data is Map && data['data'] is Map) {
+            final inner = data['data'] as Map;
+            if (inner['isEncrypt'] == true && inner['content'] != null) {
+              final decrypted =
+                  QitianCrypto.aesEcbDecryptBase64(inner['content'].toString());
+              inner['content'] = decrypted;
+              try {
+                inner['decryptedData'] =
+                    (jsonDecode(decrypted) as Map).cast<String, dynamic>();
+              } catch (_) {}
+            }
+          }
+        } catch (e) {
+          logger.warn('HTTP', '响应解密失败: $e');
         }
         handler.next(response);
       },
-      onError: (error, handler) async {
-        logger.warn('HTTP', '✗ ${error.response?.statusCode} ${error.requestOptions.path}: ${error.message}');
-        if (error.response?.statusCode == 401) {
-          final refreshed = await _tryRefreshToken();
-          if (refreshed) {
-            final retryResponse = await _retry(error.requestOptions);
-            handler.resolve(retryResponse);
-            return;
-          }
-        }
+      onError: (error, handler) {
+        logger.warn(
+            'HTTP', '✗ ${error.response?.statusCode} ${error.requestOptions.path}: ${error.message}');
         handler.next(error);
       },
     ));
   }
 
-  Future<bool> _tryRefreshToken() async {
+  /// 登录(表单)并保存token
+  Future<String?> login(String userCode, String password) async {
+    final resp = await _dio.post(
+      '${ApiConfig.baseUser}${ApiConfig.login}',
+      data: {'userCode': userCode, 'password': QitianCrypto.encryptPassword(password)},
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+    );
+    final body = resp.data;
+    logger.debug('HTTP', '← login body: ${body.toString()}');
+    if (body is Map && body['status'] == 200 && body['data'] != null) {
+      final d = body['data'] as Map;
+      final token = d['token']?.toString();
+      if (token != null && token.isNotEmpty) {
+        await saveToken(token);
+        return token;
+      }
+    }
+    return null;
+  }
+
+  /// 获取用户信息(响应AES加密, 解密后存 raw 字符串)
+  Future<Map<String, dynamic>?> getUserInfoRaw() async {
     try {
-      final refreshToken = await _storage.read(key: _refreshTokenKey);
-      if (refreshToken == null) return false;
-      final response = await Dio().post(
-        '${ApiConfig.baseUrl}${ApiConfig.refreshToken}',
-        data: {'refreshToken': refreshToken},
-      );
-      if (response.data['code'] == 0) {
-        final newToken = response.data['data']['token']?.toString();
-        final newRefresh = response.data['data']['refreshToken']?.toString();
-        if (newToken != null) {
-          await _storage.write(key: _tokenKey, value: newToken);
-          if (newRefresh != null) {
-            await _storage.write(key: _refreshTokenKey, value: newRefresh);
-          }
-          return true;
+      final resp = await _dio.get('${ApiConfig.baseUser}${ApiConfig.userInfo}');
+      final body = resp.data;
+      if (body is Map && body['status'] == 200 && body['data'] is Map) {
+        final data = body['data'] as Map;
+        // 若已解密且有 decryptedData 直接用
+        if (data['decryptedData'] is Map) {
+          return (data['decryptedData'] as Map).cast<String, dynamic>();
+        }
+        // 否则解析 content
+        final content = data['content']?.toString();
+        if (content != null && content.isNotEmpty) {
+          final decoded = jsonDecode(content);
+          return (decoded as Map).cast<String, dynamic>();
         }
       }
-      return false;
-    } catch (_) {
-      return false;
+      return null;
+    } catch (e) {
+      logger.error('HTTP', '获取用户信息失败', e);
+      return null;
     }
   }
 
-  Future<Response> _retry(RequestOptions requestOptions) async {
-    final options = Options(
-      method: requestOptions.method,
-      headers: requestOptions.headers,
-    );
-    return _dio.request(
-      requestOptions.path,
-      data: requestOptions.data,
-      queryParameters: requestOptions.queryParameters,
-      options: options,
-    );
-  }
-
-  Future<void> saveToken(String token, [String? refreshToken]) async {
+  Future<void> saveToken(String token) async {
     await _storage.write(key: _tokenKey, value: token);
-    if (refreshToken != null) {
-      await _storage.write(key: _refreshTokenKey, value: refreshToken);
-    }
-  }
-
-  Future<void> clearToken() async {
-    await _storage.delete(key: _tokenKey);
-    await _storage.delete(key: _refreshTokenKey);
   }
 
   Future<String?> getToken() => _storage.read(key: _tokenKey);
+
+  Future<void> clearToken() async {
+    await _storage.delete(key: _tokenKey);
+  }
 }

@@ -23,29 +23,25 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> login(String phone, String code) async {
+  /// 密码登录：phone=手机号, password=明文密码（底层会加密）
+  Future<bool> login(String phone, String password) async {
     _isLoading = true;
     notifyListeners();
     try {
-      final user = await _authService.loginByPhone(phone, code);
+      final user = await _authService.loginByPassword(phone, password);
+      _isLoading = false;
+      notifyListeners();
       if (user != null) {
         _user = user;
-        _isLoading = false;
         notifyListeners();
         return true;
       }
-      _isLoading = false;
-      notifyListeners();
       return false;
     } catch (e) {
       _isLoading = false;
       notifyListeners();
       return false;
     }
-  }
-
-  Future<bool> sendSmsCode(String phone) async {
-    return _authService.sendSmsCode(phone);
   }
 
   Future<void> logout() async {
