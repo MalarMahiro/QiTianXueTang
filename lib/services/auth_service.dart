@@ -5,11 +5,16 @@ import 'logger.dart';
 class AuthService {
   final DioClient _client = DioClient();
 
-  /// 密码登录：POST szone-my.7net.cc/login (form)
+  /// 密码登录：POST szone-my.7net.cc/login (form)，登录成功后拉取个人信息
   Future<UserModel?> loginByPassword(String userCode, String password) async {
     final token = await _client.login(userCode, password);
     if (token == null) return null;
-    final user = UserModel(userId: userCode, token: token, phone: userCode);
+    // 尝试拉取完整个人信息（GetUserInfo），失败则回退为仅有token的最小信息
+    UserModel? user;
+    try {
+      user = await getUserInfo();
+    } catch (_) {}
+    user ??= UserModel(userId: userCode, token: token, phone: userCode);
     logger.info('Auth', '登录成功: $userCode');
     return user;
   }

@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/api.dart';
 import 'logger.dart';
 import 'qitian_crypto.dart';
+import 'secure_crypto.dart';
 
 /// 封装Dio HTTP客户端
 /// Ponytail: 依据真实抓包。认证用 Token + Version 头(非Bearer)。响应若 isEncrypt 则AES解密。
@@ -47,6 +48,10 @@ class DioClient {
         if (token != null && token.isNotEmpty) {
           options.headers['Token'] = token;
         }
+        // 若已协商会话AES key，附带 bk 头（供带bn的isEncrypt接口使用）
+        if (SecureCrypto.hasKey) {
+          options.headers['bk'] = SecureCrypto.buildBk();
+        }
         logger.debug('HTTP', '→ ${options.method} ${options.baseUrl}${options.path}');
         handler.next(options);
       },
@@ -58,8 +63,15 @@ class DioClient {
           if (data is Map && data['data'] is Map) {
             final inner = data['data'] as Map;
             if (inner['isEncrypt'] == true && inner['content'] != null) {
-              final decrypted =
-                  QitianCrypto.aesEcbDecryptBase64(inner['content'].toString());
+              final content = inner['content'].toString();
+              String decrypted;
+              if (inner['bn'] != null) {
+                // 带 bn(iv) → 会话AES key + GCM
+                decrypted = SecureCrypto.aesGcmDecrypt(content, inner['bn'].toString());
+              } else {
+                // 无 bn → 固定 AES key + ECB
+                decrypted = QitianCrypto.aesEcbDecryptBase64(content);
+              }
               inner['content'] = decrypted;
               try {
                 inner['decryptedData'] =
@@ -109,6 +121,12 @@ class DioClient {
           logger.warn('HTTP', '登录token持久化失败(忽略): $e');
         }
         logger.debug('HTTP', '← login token 提取成功: ${token.substring(0, 10)}...');
+        // 登录成功后协商会话AES key（用于带bn的isEncrypt接口，如GetUserInfo）
+        try {
+          await negotiateKey();
+        } catch (e) {
+          logger.warn('HTTP', '会话密钥协商失败(忽略): $e');
+        }
         return token;
       }
       logger.warn('HTTP', '← login data.token 为空: data=$d');
@@ -116,6 +134,25 @@ class DioClient {
       logger.warn('HTTP', '← login 响应结构异常: body=$body type=${body.runtimeType}');
     }
     return null;
+  }
+
+  /// 协商会话级 AES key（原App: POST szone-my/user，空body，head bk）。
+  /// 成功后 SecureCrypto 持有该 key，后续带bn的isEncrypt接口用其GCM解密。
+  Future<void> negotiateKey() async {
+    // 生成新的随机会话AES key
+    SecureCrypto.generateSessionKey();
+    final bk = SecureCrypto.buildBk();
+    logger.debug('HTTP', '→ 协商会话密钥 bk=${bk.substring(0, 12)}...');
+    final resp = await _dio.post(
+      '${ApiConfig.baseUser}/user',
+      data: <String, dynamic>{},
+      options: Options(
+        contentType: Headers.formUrlEncodedContentType,
+        headers: {'bk': bk},
+      ),
+    );
+    final body = resp.data;
+    logger.debug('HTTP', '← 会话密钥协商响应: ${body?.toString()} type=${body.runtimeType}');
   }
 
   /// 获取用户信息(响应AES加密, 解密后存 raw 字符串)
