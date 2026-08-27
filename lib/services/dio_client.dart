@@ -57,6 +57,15 @@ class DioClient {
       },
       onResponse: (response, handler) async {
         logger.debug('HTTP', '← ${response.statusCode} ${response.requestOptions.path}');
+        // 统一兜底：JSON 响应体可能以原始 String 形式返回(响应没带 application/json content-type，
+        // 导致 Dio 不做自动解析)。根因修复——所有下游都依赖 body 是 Map/List。
+        if (response.data is String) {
+          final s = response.data as String;
+          try {
+            final decoded = jsonDecode(s);
+            if (decoded is Map || decoded is List) response.data = decoded;
+          } catch (_) {}
+        }
         // 解密响应体: data.isEncrypt==true → AES解密 content
         try {
           final data = response.data;

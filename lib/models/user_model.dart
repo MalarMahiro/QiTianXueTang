@@ -46,8 +46,9 @@ class UserModel {
     return UserModel(
       userId: _pick(['userId', 'userCode', 'UserCode']),
       phone: _pick(['phone', 'mobile']).isNotEmpty ? _pick(['phone', 'mobile']) : null,
-      nickname: _pick(['nickname', 'nickName', 'realName']).isNotEmpty
-          ? _pick(['nickname', 'nickName', 'realName']) : null,
+      // GetUserInfo 解密后昵称/姓名的真实键是 name(上报v.name=吕承阳为证)
+      nickname: _pick(['name', 'nickName', 'nickname', 'realName']).isNotEmpty
+          ? _pick(['name', 'nickName', 'nickname', 'realName']) : null,
       avatar: _pick(['avatar', 'headImgUrl', 'headImg']).isNotEmpty
           ? _pick(['avatar', 'headImgUrl', 'headImg']) : null,
       token: _pick(['token']).isNotEmpty ? _pick(['token']) : null,
