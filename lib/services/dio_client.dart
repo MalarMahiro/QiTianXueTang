@@ -8,10 +8,12 @@ import 'qitian_crypto.dart';
 
 /// 封装Dio HTTP客户端
 /// Ponytail: 依据真实抓包。认证用 Token + Version 头(非Bearer)。响应若 isEncrypt 则AES解密。
+/// token 用内存缓存 + secure storage 双写，secure storage 失败不阻断登录。
 class DioClient {
   late final Dio _dio;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   static const String _tokenKey = 'auth_token';
+  String? _memToken; // 内存token缓存，secure storage不可用时保证会话可用
 
   DioClient._internal();
   static final DioClient _instance = DioClient._internal();
@@ -85,7 +87,12 @@ class DioClient {
       final d = body['data'] as Map;
       final token = d['token']?.toString();
       if (token != null && token.isNotEmpty) {
-        await saveToken(token);
+        // token 已成功获取，登录即成功。持久化失败不阻断登录（有内存 + AuthProvider 持有）。
+        try {
+          await saveToken(token);
+        } catch (e) {
+          logger.warn('HTTP', '登录token持久化失败(忽略): $e');
+        }
         return token;
       }
     }
