@@ -92,7 +92,7 @@ class DioClient {
     // 兼容 String(原始JSON) 与 Map(已解析) 两种响应体
     Map<String, dynamic>? parsed;
     if (body is Map) {
-      parsed = (body as Map).cast<String, dynamic>();
+      parsed = Map<String, dynamic>.from(body as Map);
     } else if (body is String) {
       try {
         parsed = (jsonDecode(body) as Map).cast<String, dynamic>();
