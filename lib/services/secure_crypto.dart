@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart';
@@ -27,15 +28,18 @@ class SecureCrypto {
 
   /// 生成随机会话 AES key 并返回（base64 字符串）。可重复调用刷新。
   static String generateSessionKey() {
-    final rnd = FortunaRandom()..seed(KeyParameter(_randomBytes(32)));
-    final keyBytes = rnd.generateRandom(32).toUint8List();
-    _aesKeyBase64 = base64.encode(keyBytes);
+    _aesKeyBase64 = base64.encode(_randomBytes(32));
     return _aesKeyBase64!;
   }
 
   static Uint8List _randomBytes(int len) {
-    final rnd = FortunaRandom()..seed(KeyParameter(Uint8List(32)));
-    return rnd.generateRandom(len).toUint8List();
+    // 用 dart:math 的加密安全随机源，避免 pointycastle 随机数 API 版本差异
+    final rnd = Random.secure();
+    final buf = Uint8List(len);
+    for (var i = 0; i < len; i++) {
+      buf[i] = rnd.nextInt(256);
+    }
+    return buf;
   }
 
   /// 从 DER SubjectPublicKeyInfo 线性遍历，提取 RSA modulus(n) 和 publicExponent(e)。
@@ -99,10 +103,8 @@ class SecureCrypto {
     }
     final keyBytes = base64.decode(_aesKeyBase64!);
     final iv = base64.decode(ivB64);
+    // GCM-AEAD: content 末尾含16字节认证标签，整体作为一条AEAD输入解密
     final raw = base64.decode(contentB64);
-    // GCM: 密文最后16字节是认证标签
-    final tag = Uint8List.sublistView(raw, raw.length - 16);
-    final ciph = Uint8List.sublistView(raw, 0, raw.length - 16);
 
     final gcm = GCMBlockCipher(AESEngine())
       ..init(
@@ -114,8 +116,8 @@ class SecureCrypto {
           Uint8List(0), // AAD空
         ),
       );
-    final out = Uint8List(gcm.getOutputSize(ciph.length));
-    final n = gcm.processBytes(ciph, 0, ciph.length, out, 0);
+    final out = Uint8List(gcm.getOutputSize(raw.length));
+    final n = gcm.processBytes(raw, 0, raw.length, out, 0);
     gcm.doFinal(out, n);
     return utf8.decode(out, allowMalformed: true);
   }
