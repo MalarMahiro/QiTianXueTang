@@ -76,12 +76,9 @@ class ExamService {
         return null;
       }
       logger.debug('Exam', 'ScoreReport 响应类型: ${raw.runtimeType}');
-      if (raw is Map) {
-        logger.debug('Exam', 'ScoreReport JSON keys: ${raw.keys.toList()}');
-        logger.debug('Exam', 'ScoreReport JSON preview: ${raw.toString().substring(0, raw.toString().length > 200 ? 200 : raw.toString().length)}');
-      } else {
-        logger.debug('Exam', 'ScoreReport 响应前100字符: ${raw.toString().substring(0, raw.toString().length > 100 ? 100 : raw.toString().length)}');
-      }
+      // raw 一定是 Map 类型（来自 _dataOf 返回）
+      logger.debug('Exam', 'ScoreReport JSON keys: ${raw.keys.toList()}');
+      logger.debug('Exam', 'ScoreReport JSON preview: ${raw.toString().substring(0, raw.toString().length > 200 ? 200 : raw.toString().length)}');
       // 用防御性映射解析：ScoreReport 响应含总分/各科/排名等
       final exam = ExamModel.fromDetailJson(raw);
       logger.debug('Exam', 'ScoreReport 解析后 exam: $exam');
