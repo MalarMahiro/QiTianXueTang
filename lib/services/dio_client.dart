@@ -394,6 +394,8 @@ class DioClient {
         }),
       );
       final d = _dataOf(resp.data);
+      logger.debug('HTTP', 'ScoreReport 原始响应: ${resp.data}');
+      logger.debug('HTTP', 'ScoreReport 解析后: $d');
       if (d is Map) {
         logger.debug('HTTP', 'ScoreReport 解密字段: ${d.keys.toList()}');
       }

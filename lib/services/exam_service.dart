@@ -61,15 +61,22 @@ class ExamService {
   Future<ExamModel?> getExamDetail(String examId) async {
     try {
       if (schoolGuid.isEmpty || grade.isEmpty) return null;
+      logger.debug('Exam', '开始获取考试详情 examGuid=$examId schoolGuid=$schoolGuid grade=$grade');
       final raw = await _client.getScoreReport(
         examGuid: examId,
         schoolGuid: schoolGuid,
         grade: grade,
       );
-      if (raw == null) return null;
-      logger.debug('Exam', 'ScoreReport 原始数据: $raw');
+      logger.debug('Exam', 'ScoreReport 原始响应: $raw');
+      if (raw == null) {
+        logger.error('Exam', 'ScoreReport 返回 null');
+        return null;
+      }
+      logger.debug('Exam', 'ScoreReport 解析前 raw 类型: ${raw.runtimeType}');
       // 用防御性映射解析：ScoreReport 响应含总分/各科/排名等
       final exam = ExamModel.fromDetailJson(raw);
+      logger.debug('Exam', 'ScoreReport 解析后 exam: $exam');
+      logger.debug('Exam', 'examName=${exam.examName}, studentScore=${exam.studentScore}, subjects=${exam.subjects?.length}');
       return exam;
     } catch (e) {
       logger.error('Exam', '获取考试详情失败', e);
