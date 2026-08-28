@@ -70,17 +70,22 @@ class ExamService {
         schoolGuid: schoolGuid,
         grade: grade,
       );
+      if (raw == null) {
+        logger.error('Exam', 'ScoreReport 返回 null');
+        return null;
+      }
       logger.debug('Exam', 'ScoreReport 响应类型: ${raw.runtimeType}');
       // raw 一定是 Map 类型（来自 _dataOf 返回）
       logger.debug('Exam', 'ScoreReport JSON keys: ${raw.keys.toList()}');
-      logger.debug('Exam', 'ScoreReport JSON preview: ${raw.toString().substring(0, raw.toString().length > 200 ? 200 : raw.toString().length)}');
+      final preview = raw.toString();
+      logger.debug('Exam', 'ScoreReport JSON preview: ${preview.length > 200 ? preview.substring(0, 200) : preview}');
       // 用防御性映射解析：ScoreReport 响应含总分/各科/排名等
       final exam = ExamModel.fromDetailJson(raw);
       logger.debug('Exam', 'ScoreReport 解析后 exam: $exam');
       logger.debug('Exam', 'examName=${exam.examName}, studentScore=${exam.studentScore}, subjects=${exam.subjects?.length}');
       return exam;
-    } catch (e, stackTrace) {
-      logger.error('Exam', '获取考试详情失败', e, stackTrace: stackTrace);
+    } catch (e) {
+      logger.error('Exam', '获取考试详情失败: $e');
       return null;
     }
   }
