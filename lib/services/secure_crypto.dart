@@ -124,8 +124,10 @@ class SecureCrypto {
         ),
       );
     final out = Uint8List(gcm.getOutputSize(raw.length));
-    final n = gcm.processBytes(raw, 0, raw.length, out, 0);
-    gcm.doFinal(out, n);
-    return utf8.decode(out, allowMalformed: true);
+    var n = gcm.processBytes(raw, 0, raw.length, out, 0);
+    // doFinal 返回值必须捕获：out 是 getOutputSize()(含16字节tag) 的整块缓冲，
+    // 未写入的尾部是残留 NUL，直接整块 utf8.decode 会在尾部出现 \u0000 导致 JSON 解析失败。
+    n += gcm.doFinal(out, n);
+    return utf8.decode(Uint8List.sublistView(out, 0, n), allowMalformed: true);
   }
 }
