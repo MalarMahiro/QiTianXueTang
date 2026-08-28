@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../providers/exam_provider.dart';
+import 'exam_subject_detail_page.dart';
 
 class ExamDetailPage extends StatefulWidget {
   final String examId;
@@ -72,44 +73,58 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                 // 各科成绩
                 const Text('各科成绩', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
-                if (exam.subjects != null)
-                  ...exam.subjects!.map((s) => Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: 60,
-                                child: Text(s.subjectName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('${s.score?.toStringAsFixed(0) ?? '-'} / ${s.fullScore?.toStringAsFixed(0) ?? '-'}',
-                                        style: const TextStyle(fontSize: 16)),
-                                    const SizedBox(height: 4),
-                                    if (s.classAvg != null)
-                                      Text('班级平均: ${s.classAvg!.toStringAsFixed(1)}',
-                                          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                                  ],
-                                ),
-                              ),
-                              if (s.gradeRank != null)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text('排名 ${s.gradeRank!.toStringAsFixed(0)}',
-                                      style: const TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
-                                ),
-                            ],
+                if (exam.subjects != null && exam.subjects!.isNotEmpty)
+                  ...exam.subjects!.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final subject = entry.value;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          child: Text(
+                            subject.subjectName.substring(0, 1),
+                            style: const TextStyle(fontSize: 16),
                           ),
                         ),
-                      )),
+                        title: Text(subject.subjectName),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${subject.score?.toStringAsFixed(0) ?? '-'} / ${subject.fullScore?.toStringAsFixed(0) ?? '-'}',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            if (subject.classAvg != null)
+                              Text(
+                                '班级平均: ${subject.classAvg!.toStringAsFixed(1)}',
+                                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                              ),
+                          ],
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ExamSubjectDetailPage(
+                                examId: exam.examId,
+                                examName: exam.examName,
+                                subjectName: subject.subjectName,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  }).toList(),
+                if (exam.subjects == null || exam.subjects!.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      '暂无单科数据',
+                      style: TextStyle(color: AppTheme.textSecondary),
+                    ),
+                  ),
               ],
             ),
           );

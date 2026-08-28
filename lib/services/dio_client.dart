@@ -403,4 +403,42 @@ class DioClient {
       return null;
     }
   }
+
+  /// 获取单科列表 (请求侧GCM加密): POST Question/Subjects
+  Future<List<Map<String, dynamic>>?> getSubjects({
+    required String examGuid,
+    required String schoolGuid,
+    required String grade,
+  }) async {
+    try {
+      final iv = SecureCrypto.generateIv();
+      final ivBytes = base64.decode(iv);
+      final params = jsonEncode({
+        'examGuid': examGuid,
+        'schoolGuid': schoolGuid,
+        'grade': grade,
+      });
+      logger.debug('HTTP', 'Subjects bp 明文: $params');
+      final bp = SecureCrypto.aesGcmEncrypt(params, ivBytes);
+      final resp = await _dio.post(
+        '${ApiConfig.baseScore}${ApiConfig.questionSubjects}',
+        options: Options(headers: {
+          'bn': iv,
+          'bp': bp,
+        }),
+      );
+      final d = _dataOf(resp.data);
+      if (d is Map) {
+        final list = d['list'];
+        if (list is List) {
+          logger.debug('HTTP', 'Subjects 解密字段: ${list.length} 个科目');
+          return list.cast<Map<String, dynamic>>();
+        }
+      }
+      return null;
+    } catch (e) {
+      logger.error('HTTP', 'getSubjects 失败', e);
+      return null;
+    }
+  }
 }

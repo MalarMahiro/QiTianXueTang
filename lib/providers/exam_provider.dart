@@ -47,5 +47,16 @@ class ExamProvider extends ChangeNotifier {
     _isLoading = false;
     notifyListeners();
   }
+
+  /// 获取单科列表
+  Future<List<Map<String, dynamic>>?> loadSubjectList(String examId) async {
+    _isLoading = true;
+    notifyListeners();
+    final list = await _examService.getSubjectList(examId);
+    _isLoading = false;
+    notifyListeners();
+    return list;
+  }
+
   Future<void> loadStudyReport() async {}
 }

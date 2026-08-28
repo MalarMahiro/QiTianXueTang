@@ -76,4 +76,22 @@ class ExamService {
       return null;
     }
   }
+
+  /// 获取单科列表（请求侧GCM加密）：POST Question/Subjects
+  Future<List<Map<String, dynamic>>?> getSubjectList(String examId) async {
+    try {
+      if (schoolGuid.isEmpty || grade.isEmpty) return null;
+      final raw = await _client.getSubjects(
+        examGuid: examId,
+        schoolGuid: schoolGuid,
+        grade: grade,
+      );
+      if (raw == null) return null;
+      logger.debug('Exam', 'Subjects 原始数据: $raw');
+      return raw;
+    } catch (e) {
+      logger.error('Exam', '获取单科列表失败', e);
+      return null;
+    }
+  }
 }
