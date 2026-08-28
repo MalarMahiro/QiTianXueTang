@@ -75,7 +75,6 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                 const SizedBox(height: 12),
                 if (exam.subjects != null && exam.subjects!.isNotEmpty)
                   ...exam.subjects!.asMap().entries.map((entry) {
-                    final index = entry.key;
                     final subject = entry.value;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
