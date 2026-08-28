@@ -26,7 +26,10 @@ class _ExamSubjectDetailPageState extends State<ExamSubjectDetailPage> {
   @override
   void initState() {
     super.initState();
-    _loadSubjectList();
+    // 使用 addPostFrameCallback 避免在 build 阶段调用 notifyListeners
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSubjectList();
+    });
   }
 
   Future<void> _loadSubjectList() async {

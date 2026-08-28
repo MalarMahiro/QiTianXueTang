@@ -17,7 +17,10 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
   @override
   void initState() {
     super.initState();
-    context.read<ExamProvider>().loadExamDetail(widget.examId);
+    // 使用 addPostFrameCallback 避免在 build 阶段调用 notifyListeners
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ExamProvider>().loadExamDetail(widget.examId);
+    });
   }
 
   @override
