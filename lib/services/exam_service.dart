@@ -60,7 +60,10 @@ class ExamService {
   /// 考试详情（请求侧GCM加密）：POST Question/ScoreReport
   Future<ExamModel?> getExamDetail(String examId) async {
     try {
-      if (schoolGuid.isEmpty || grade.isEmpty) return null;
+      if (schoolGuid.isEmpty || grade.isEmpty) {
+        logger.error('Exam', '缺少上下文 schoolGuid=$schoolGuid grade=$grade');
+        return null;
+      }
       logger.debug('Exam', '开始获取考试详情 examGuid=$examId schoolGuid=$schoolGuid grade=$grade');
       final raw = await _client.getScoreReport(
         examGuid: examId,
@@ -72,7 +75,13 @@ class ExamService {
         logger.error('Exam', 'ScoreReport 返回 null');
         return null;
       }
-      logger.debug('Exam', 'ScoreReport 解析前 raw 类型: ${raw.runtimeType}');
+      logger.debug('Exam', 'ScoreReport 响应类型: ${raw.runtimeType}');
+      if (raw is Map) {
+        logger.debug('Exam', 'ScoreReport JSON keys: ${raw.keys.toList()}');
+        logger.debug('Exam', 'ScoreReport JSON preview: ${raw.toString().substring(0, raw.toString().length > 200 ? 200 : raw.toString().length)}');
+      } else {
+        logger.debug('Exam', 'ScoreReport 响应前100字符: ${raw.toString().substring(0, raw.toString().length > 100 ? 100 : raw.toString().length)}');
+      }
       // 用防御性映射解析：ScoreReport 响应含总分/各科/排名等
       final exam = ExamModel.fromDetailJson(raw);
       logger.debug('Exam', 'ScoreReport 解析后 exam: $exam');
