@@ -57,6 +57,23 @@ class ExamService {
     }
   }
 
-  // 考试详情：下一批实现（需请求侧加密）
-  Future<ExamModel?> getExamDetail(String examId) async => null;
+  /// 考试详情（请求侧GCM加密）：POST Question/ScoreReport
+  Future<ExamModel?> getExamDetail(String examId) async {
+    try {
+      if (schoolGuid.isEmpty || grade.isEmpty) return null;
+      final raw = await _client.getScoreReport(
+        examGuid: examId,
+        schoolGuid: schoolGuid,
+        grade: grade,
+      );
+      if (raw == null) return null;
+      logger.debug('Exam', 'ScoreReport 原始数据: $raw');
+      // 用防御性映射解析：ScoreReport 响应含总分/各科/排名等
+      final exam = ExamModel.fromDetailJson(raw);
+      return exam;
+    } catch (e) {
+      logger.error('Exam', '获取考试详情失败', e);
+      return null;
+    }
+  }
 }

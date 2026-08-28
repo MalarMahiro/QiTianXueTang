@@ -130,4 +130,33 @@ class SecureCrypto {
     n += gcm.doFinal(out, n);
     return utf8.decode(Uint8List.sublistView(out, 0, n), allowMalformed: true);
   }
+
+  /// AES-GCM 加密（请求侧）：key=会话key，iv 取 12字节随机，明文JSON → base64(ciphertext+16字节tag)。
+  /// 与响应侧 aesGcmDecrypt 对称。调用方需自行生成并回传 bn(iv)，服务端用会话key+bn解密。
+  /// ponytail: Question/* 等接口请求体加密进 `bp` 头，iv 放 `bn` 头。
+  static String aesGcmEncrypt(String plaintext, Uint8List iv) {
+    if (_aesKeyBase64 == null) {
+      throw StateError('会话AES key未初始化，请先协商');
+    }
+    final keyBytes = base64.decode(_aesKeyBase64!);
+    final gcm = GCMBlockCipher(AESEngine())
+      ..init(
+        true,
+        AEADParameters(
+          KeyParameter(keyBytes),
+          128,
+          iv,
+          Uint8List(0), // AAD空
+        ),
+      );
+    final payload = utf8.encode(plaintext);
+    final out = Uint8List(gcm.getOutputSize(payload.length));
+    var n = gcm.processBytes(payload, 0, payload.length, out, 0);
+    n += gcm.doFinal(out, n);
+    // 尾部16字节是GCM tag，一并编码
+    return base64.encode(Uint8List.sublistView(out, 0, n));
+  }
+
+  /// 生成12字节随机 iv（base64），用于请求侧加密。与响应 bn 同规格。
+  static String generateIv() => base64.encode(_randomBytes(12));
 }

@@ -368,4 +368,39 @@ class DioClient {
       return null;
     }
   }
+
+  /// 成绩详情 (请求侧GCM加密): POST Question/ScoreReport
+  /// 响应 GCM 加密，由拦截器自动解密。bn=iv, bp=加密请求参数, bk已由拦截器自动添加。
+  Future<Map<String, dynamic>?> getScoreReport({
+    required String examGuid,
+    required String schoolGuid,
+    required String grade,
+  }) async {
+    try {
+      final iv = SecureCrypto.generateIv();
+      final ivBytes = base64.decode(iv);
+      final params = jsonEncode({
+        'examGuid': examGuid,
+        'schoolGuid': schoolGuid,
+        'grade': grade,
+      });
+      logger.debug('HTTP', 'ScoreReport bp 明文: $params');
+      final bp = SecureCrypto.aesGcmEncrypt(params, ivBytes);
+      final resp = await _dio.post(
+        '${ApiConfig.baseScore}${ApiConfig.questionScoreReport}',
+        options: Options(headers: {
+          'bn': iv,
+          'bp': bp,
+        }),
+      );
+      final d = _dataOf(resp.data);
+      if (d is Map) {
+        logger.debug('HTTP', 'ScoreReport 解密字段: ${d.keys.toList()}');
+      }
+      return d is Map ? d.cast<String, dynamic>() : null;
+    } catch (e) {
+      logger.error('HTTP', 'getScoreReport 失败', e);
+      return null;
+    }
+  }
 }

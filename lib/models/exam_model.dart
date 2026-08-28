@@ -49,7 +49,43 @@ class ExamModel {
     );
   }
 
-  /// 考试列表解析：来自 getClaimExams 的 {examGuid,examName,type,time,score,aiState...}
+  /// 考试详情解析：来自 ScoreReport 响应（字段名未知，防御性多键映射）
+  factory ExamModel.fromDetailJson(Map<String, dynamic> json) {
+    double? _d(Object? v) => (v is num) ? v.toDouble() : double.tryParse(v?.toString() ?? '');
+    String _s(List keys) {
+      for (final k in keys) {
+        final v = json[k];
+        if (v != null && v.toString().isNotEmpty) return v.toString();
+      }
+      return '';
+    }
+    // 解析各科成绩（字段名可能为 subjects/subjectList/items 等）
+    List<SubjectScore>? parseSubjects() {
+      for (final k in ['subjects', 'subjectList', 'items', 'subjectScores', 'list']) {
+        final v = json[k];
+        if (v is List && v.isNotEmpty) {
+          return v.map((e) => e is Map ? SubjectScore.fromJson(e.cast<String, dynamic>()) : null)
+              .whereType<SubjectScore>().toList();
+        }
+      }
+      return null;
+    }
+    return ExamModel(
+      examId: _s(['examId', 'examGuid', 'id', 'guid']),
+      examName: _s(['examName', 'name', 'paperName', 'title']),
+      subject: _s(['subject', 'subjectName', 'courseName']),
+      gradeName: _s(['gradeName', 'grade', 'currentGrade']),
+      examTime: _s(['examTime', 'time', 'examDate', 'date']),
+      status: _s(['status', 'type', 'examType']),
+      totalScore: _d(json['totalScore'] ?? json['fullScore'] ?? json['total'] ?? json['fullMark']),
+      studentScore: _d(json['studentScore'] ?? json['score'] ?? json['myScore'] ?? json['studentMark']),
+      classRank: _d(json['classRank'] ?? json['classRanking'] ?? json['classOrder']),
+      gradeRank: _d(json['gradeRank'] ?? json['gradeRanking'] ?? json['gradeOrder']),
+      classAvg: _d(json['classAvg'] ?? json['classAverage'] ?? json['classAvgScore']),
+      gradeAvg: _d(json['gradeAvg'] ?? json['gradeAverage'] ?? json['gradeAvgScore']),
+      subjects: parseSubjects(),
+    );
+  }
   factory ExamModel.fromClaimJson(dynamic json) {
     final m = json is Map ? json : <String, dynamic>{};
     double? _d(Object? v) => (v is num) ? v.toDouble() : double.tryParse(v?.toString() ?? '');

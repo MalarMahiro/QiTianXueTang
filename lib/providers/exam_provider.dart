@@ -38,7 +38,14 @@ class ExamProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 考试详情/学情报告：下一批实现
-  Future<void> loadExamDetail(String examId) async {}
+  /// 考试详情/学情报告：下一批实现
+  Future<void> loadExamDetail(String examId) async {
+    _isLoading = true;
+    notifyListeners();
+    final exam = await _examService.getExamDetail(examId);
+    _currentExam = exam;
+    _isLoading = false;
+    notifyListeners();
+  }
   Future<void> loadStudyReport() async {}
 }
