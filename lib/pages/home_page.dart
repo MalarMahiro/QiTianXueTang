@@ -64,8 +64,10 @@ class _HomeTabState extends State<_HomeTab> {
     if (_loaded) return;
     final user = context.read<AuthProvider>().user;
     if (user == null || user.schoolGuid == null || user.schoolGuid!.isEmpty) return;
-    // 用户信息有上下文后再拉取首页数据
-    context.read<HomeProvider>().loadAll(user).catchError((_) {});
+    // 使用 addPostFrameCallback 在 build 完成后执行，避免在 build 阶段调用 notifyListeners
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<HomeProvider>().loadAll(user).catchError((_) {});
+    });
     _loaded = true;
   }
 
