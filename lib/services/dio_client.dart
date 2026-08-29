@@ -222,7 +222,8 @@ class DioClient {
   // ===== 业务接口 =====
   // 统一取响应 data 对象：解密(AES-ECB待bn/无bn)后返回 data 主体(Map/List)
   dynamic _dataOf(dynamic body) {
-    if (body is Map && body['status'] == 200 && body['data'] != null) {
+    // 如果是 Map 且有 data 字段
+    if (body is Map && body['data'] != null) {
       final data = body['data'];
       if (data is Map) {
         // data.isEncrypt==true → interceptor 已写 decryptedData
@@ -240,7 +241,20 @@ class DioClient {
       }
       return data;
     }
-    return null;
+    // ScoreReport 等接口直接返回 data 对象（没有外层 status）
+    if (body is Map && body['isEncrypt'] != null) {
+      if (body['decryptedData'] != null) return body['decryptedData'];
+      if (body['content'] != null && body['isEncrypt'] == true) {
+        final decrypted = QitianCrypto.aesEcbDecryptBase64(body['content'].toString());
+        try {
+          return (jsonDecode(decrypted) as Map).cast<String, dynamic>();
+        } catch (_) {
+          return decrypted;
+        }
+      }
+      return body;
+    }
+    return body;
   }
 
   /// 考试列表 (AES-ECB): GET getClaimExams
