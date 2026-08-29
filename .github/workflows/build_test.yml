@@ -33,6 +33,10 @@ jobs:
         run: flutter analyze
 
       - name: Build debug APK
+        env:
+          DEBUG_STORE_PASSWORD: ${{ secrets.DEBUG_STORE_PASSWORD }}
+          DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
+          DEBUG_KEY_PASSWORD: ${{ secrets.DEBUG_KEY_PASSWORD }}
         run: flutter build apk --debug
 
       - name: Upload debug APK
