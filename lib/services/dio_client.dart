@@ -145,6 +145,30 @@ class DioClient {
     return null;
   }
 
+  bool _isNegotiating = false;
+  Completer<void>? _negotiationCompleter;
+
+  /// 确保会话级 AES key 有效（冷启动后重新协商）
+  Future<void> _ensureSessionKey() async {
+    if (SecureCrypto.hasKey) return;
+    if (_isNegotiating) {
+      // 等待正在进行的协商完成
+      await _negotiationCompleter?.future;
+      return;
+    }
+    _isNegotiating = true;
+    _negotiationCompleter = Completer<void>();
+    try {
+      await negotiateKey();
+      _negotiationCompleter?.complete();
+    } catch (e) {
+      _negotiationCompleter?.completeError(e);
+      rethrow;
+    } finally {
+      _isNegotiating = false;
+    }
+  }
+
   /// 协商会话级 AES key（原App: POST szone-my/user，空body，head bk）。
   /// 成功后 SecureCrypto 持有该 key，后续带bn的isEncrypt接口用其GCM解密。
   Future<void> negotiateKey() async {
@@ -391,6 +415,9 @@ class DioClient {
     required String grade,
   }) async {
     try {
+      // 冷启动后会话密钥可能丢失，确保有效
+      await _ensureSessionKey();
+      
       final iv = SecureCrypto.generateIv();
       final ivBytes = base64.decode(iv);
       final params = jsonEncode({
