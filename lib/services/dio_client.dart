@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -454,6 +455,9 @@ class DioClient {
     required String grade,
   }) async {
     try {
+      // 冷启动后会话密钥可能丢失，确保有效
+      await _ensureSessionKey();
+
       final iv = SecureCrypto.generateIv();
       final ivBytes = base64.decode(iv);
       final params = jsonEncode({
@@ -465,10 +469,13 @@ class DioClient {
       final bp = SecureCrypto.aesGcmEncrypt(params, ivBytes);
       final resp = await _dio.post(
         '${ApiConfig.baseScore}${ApiConfig.questionSubjects}',
-        options: Options(headers: {
-          'bn': iv,
-          'bp': bp,
-        }),
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: {
+            'bn': iv,
+            'bp': bp,
+          },
+        ),
       );
       final d = _dataOf(resp.data);
       if (d is Map) {
