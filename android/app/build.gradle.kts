@@ -10,6 +10,16 @@ android {
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
+    signingConfigs {
+        create("debugFixed") {
+            storeFile = file("mykey.jks")
+            // 优先从环境变量读取，其次从 gradle.properties 读取，最后使用默认值
+            storePassword = System.getenv("DEBUG_STORE_PASSWORD") ?: project.findProperty("DEBUG_STORE_PASSWORD") as? String ?: "android"
+            keyAlias = System.getenv("DEBUG_KEY_ALIAS") ?: project.findProperty("DEBUG_KEY_ALIAS") as? String ?: "debug"
+            keyPassword = System.getenv("DEBUG_KEY_PASSWORD") ?: project.findProperty("DEBUG_KEY_PASSWORD") as? String ?: "android"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -28,8 +38,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debugFixed")
+        }
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("debugFixed")
         }
     }
 }
