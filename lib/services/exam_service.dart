@@ -74,6 +74,13 @@ class ExamService {
         logger.error('Exam', 'ScoreReport 返回 null');
         return null;
       }
+      
+      // 检查响应是否包含服务端错误（如 500）
+      if (raw['status'] == 500) {
+        logger.error('Exam', 'ScoreReport 服务端错误: ${raw['message']}');
+        return null;
+      }
+      
       logger.debug('Exam', 'ScoreReport 响应类型: ${raw.runtimeType}');
       // raw 一定是 Map 类型（来自 _dataOf 返回）
       logger.debug('Exam', 'ScoreReport JSON keys: ${raw.keys.toList()}');
