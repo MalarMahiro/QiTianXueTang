@@ -409,25 +409,31 @@ class DioClient {
   }
 
   /// 成绩详情 (请求侧GCM加密): POST Question/ScoreReport
+  /// 官方JS实参: {examGuid, schoolGuid, grade:currentGrade, schoolRuCode:ruCode, km:科目名("总分"=全科)}
   /// 响应 GCM 加密，由拦截器自动解密。bn=iv, bp=加密请求参数, bk已由拦截器自动添加。
   Future<Map<String, dynamic>?> getScoreReport({
     required String examGuid,
     required String schoolGuid,
     required String grade,
+    required String ruCode,
+    String km = '总分',
   }) async {
     try {
       // 冷启动后会话密钥可能丢失，确保有效
       await _ensureSessionKey();
-      
+
       final iv = SecureCrypto.generateIv();
       final ivBytes = base64.decode(iv);
-      final params = jsonEncode({
-        'examGuid': examGuid,
-        'schoolGuid': schoolGuid,
-        'grade': grade,
-      });
-      logger.debug('HTTP', 'ScoreReport bp 明文: $params');
-      final bp = SecureCrypto.aesGcmEncrypt(params, ivBytes);
+      // 官方加密payload格式(非JSON!): "k=v;k=v" 分号连接, 见原App septnetlive aesEncrypt
+      final pairs = [
+        'examGuid=$examGuid',
+        'schoolGuid=$schoolGuid',
+        'grade=$grade',
+        'schoolRuCode=$ruCode',
+        'km=$km',
+      ];
+      logger.debug('HTTP', 'ScoreReport bp 明文: ${pairs.join(';')}');
+      final bp = SecureCrypto.aesGcmEncrypt(pairs.join(';'), ivBytes);
       final resp = await _dio.post(
         '${ApiConfig.baseScore}${ApiConfig.questionScoreReport}',
         options: Options(headers: {
@@ -449,10 +455,12 @@ class DioClient {
   }
 
   /// 获取单科列表 (请求侧GCM加密): POST Question/Subjects
+  /// 官方JS实参: {examGuid, schoolGuid, grade:currentGrade, schoolRuCode:ruCode}
   Future<List<Map<String, dynamic>>?> getSubjects({
     required String examGuid,
     required String schoolGuid,
     required String grade,
+    required String ruCode,
   }) async {
     try {
       // 冷启动后会话密钥可能丢失，确保有效
@@ -460,13 +468,15 @@ class DioClient {
 
       final iv = SecureCrypto.generateIv();
       final ivBytes = base64.decode(iv);
-      final params = jsonEncode({
-        'examGuid': examGuid,
-        'schoolGuid': schoolGuid,
-        'grade': grade,
-      });
-      logger.debug('HTTP', 'Subjects bp 明文: $params');
-      final bp = SecureCrypto.aesGcmEncrypt(params, ivBytes);
+      // 官方加密payload格式(非JSON!): "k=v;k=v" 分号连接
+      final pairs = [
+        'examGuid=$examGuid',
+        'schoolGuid=$schoolGuid',
+        'grade=$grade',
+        'schoolRuCode=$ruCode',
+      ];
+      logger.debug('HTTP', 'Subjects bp 明文: ${pairs.join(';')}');
+      final bp = SecureCrypto.aesGcmEncrypt(pairs.join(';'), ivBytes);
       final resp = await _dio.post(
         '${ApiConfig.baseScore}${ApiConfig.questionSubjects}',
         options: Options(
