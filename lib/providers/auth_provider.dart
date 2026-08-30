@@ -1,7 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/app_navigator.dart';
+import '../models/saved_account.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/dio_client.dart';
@@ -10,6 +15,11 @@ import '../services/exam_service.dart';
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
   final ExamService _examService = ExamService();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  static const String _savedAccountsKey = 'saved_accounts_v1';
+  List<SavedAccount> _savedAccounts = [];
+  bool _handlingAuthExpired = false;
+  bool _switching = false;
   UserModel? _user;
   bool _isLoading = false;
   bool _isInitialized = false;
@@ -18,6 +28,8 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _user?.isLoggedIn ?? false;
   bool get isInitialized => _isInitialized;
+  List<SavedAccount> get savedAccounts => _savedAccounts;
+  bool get switching => _switching;
 
   /// 从 SharedPreferences 恢复业务上下文
   Future<void> _restoreContext() async {
@@ -33,6 +45,8 @@ class AuthProvider extends ChangeNotifier {
   /// 应用启动恢复会话：
   /// 只要有 token 就立即标记为已登录（登录状态不丢失），随后后台拉取完整信息增强。
   Future<void> init() async {
+    await _loadSavedAccounts();
+    DioClient.onUnauthorized = _onUnauthorized;
     final token = await DioClient().getToken();
     if (token != null && token.isNotEmpty) {
       // 先用 token 构造最小用户，保证 isLoggedIn=true，避免重启后掉登录
@@ -47,6 +61,152 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── 多账号管理 ───────────────────────────────────────────
+
+  /// 从加密安全存储读取已保存账号
+  Future<void> _loadSavedAccounts() async {
+    try {
+      final s = await _secureStorage.read(key: _savedAccountsKey);
+      if (s != null && s.isNotEmpty) {
+        final arr = jsonDecode(s) as List<dynamic>;
+        _savedAccounts = arr
+            .map((e) => SavedAccount.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistSavedAccounts() async {
+    try {
+      await _secureStorage.write(
+        key: _savedAccountsKey,
+        value: jsonEncode(_savedAccounts.map((e) => e.toJson()).toList()),
+      );
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// 登录成功/信息刷新后记住账号(含密码, 用于切换时静默重登)
+  Future<void> _upsertSavedAccount(UserModel user, {String? password}) async {
+    if (user.userId.isEmpty) return;
+    await _loadSavedAccounts();
+    var pwd = password ?? '';
+    final existing =
+        _savedAccounts.where((a) => a.userCode == user.userId).toList();
+    if (existing.isNotEmpty && password == null) {
+      pwd = existing.first.password;
+    }
+    _savedAccounts.removeWhere((a) => a.userCode == user.userId);
+    _savedAccounts.insert(
+        0,
+        SavedAccount(
+          userCode: user.userId,
+          password: pwd,
+          nickname: user.nickname ?? '',
+          schoolName: user.schoolName ?? '',
+          userJson: jsonEncode(user.toJson()),
+          savedAt: DateTime.now().toIso8601String(),
+        ));
+    await _persistSavedAccounts();
+  }
+
+  /// 删除某个已保存账号(不影响当前登录)
+  Future<void> removeAccount(String userCode) async {
+    await _loadSavedAccounts();
+    _savedAccounts.removeWhere((a) => a.userCode == userCode);
+    await _persistSavedAccounts();
+  }
+
+  /// 切换账号: 优先用保存的密码静默重登(拿到新token), 否则用缓存的token
+  Future<bool> switchAccount(SavedAccount account) async {
+    if (_switching) return false;
+    _switching = true;
+    try {
+      // 先把当前账号存档(更新token/资料)
+      if (_user != null && _user!.isLoggedIn && _user!.userId.isNotEmpty) {
+        await _upsertSavedAccount(_user!);
+      }
+      UserModel? target;
+      if (account.password.isNotEmpty) {
+        try {
+          target =
+              await _authService.loginByPassword(account.userCode, account.password);
+        } catch (_) {}
+      }
+      target ??= _userFromSaved(account);
+      if (target == null) return false;
+      await _applyAccount(target,
+          password: account.password.isNotEmpty ? account.password : null);
+      return true;
+    } finally {
+      _switching = false;
+    }
+  }
+
+  UserModel? _userFromSaved(SavedAccount a) {
+    if (a.userJson.isEmpty) return null;
+    try {
+      return UserModel.fromJson(jsonDecode(a.userJson) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 应用某个账号: 恢复资料/上下文并记住
+  Future<void> _applyAccount(UserModel user, {String? password}) async {
+    _user = user;
+    final prefs = await SharedPreferences.getInstance();
+    if (user.schoolGuid?.isNotEmpty == true) {
+      await prefs.setString('schoolGuid', user.schoolGuid!);
+    }
+    if (user.grade?.isNotEmpty == true) {
+      await prefs.setString('grade', user.grade!);
+    }
+    if (user.ruCode?.isNotEmpty == true) {
+      await prefs.setString('ruCode', user.ruCode!);
+    }
+    _examService.setContext(
+        schoolGuid: user.schoolGuid, grade: user.grade, ruCode: user.ruCode);
+    await _upsertSavedAccount(user, password: password);
+    notifyListeners();
+  }
+
+  // ─── 登录态失效检测 ────────────────────────────────────────
+
+  /// DioClient 检测到 401(HTTP或业务status): 清会话并弹窗引导重登
+  void _onUnauthorized(String message) {
+    if (_handlingAuthExpired) return;
+    _handlingAuthExpired = true;
+    _user = null;
+    notifyListeners();
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null) {
+      _handlingAuthExpired = false;
+      return;
+    }
+    showDialog<void>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dCtx) => AlertDialog(
+        title: const Text('登录已失效'),
+        content: Text(message.isEmpty
+            ? '账号可能在其他设备登录，请重新登录。已保存的其他账号不受影响，可随时切换。'
+            : message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dCtx);
+              _handlingAuthExpired = false;
+              appNavigatorKey.currentState
+                  ?.pushNamedAndRemoveUntil('/login', (route) => false);
+            },
+            child: const Text('重新登录'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 供下拉刷新等主动触发：重新拉取完整用户信息
   Future<void> refreshUserInfo() => _refreshUserInfo();
 
@@ -55,6 +215,7 @@ class AuthProvider extends ChangeNotifier {
       final user = await _authService.getUserInfo();
       if (user != null) {
         _user = user;
+        await _upsertSavedAccount(user);
         // 保存业务上下文到 SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         if (user.schoolGuid != null && user.schoolGuid!.isNotEmpty) {
@@ -83,6 +244,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       if (user != null) {
         _user = user;
+        await _upsertSavedAccount(user, password: password);
         // 保存业务上下文到 SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         if (user.schoolGuid != null && user.schoolGuid!.isNotEmpty) {

@@ -16,6 +16,11 @@ class DioClient {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   static const String _tokenKey = 'auth_token';
   String? _memToken; // 内存token缓存，secure storage不可用时保证会话可用
+  DateTime? _lastUnauthorizedAt;
+
+  /// 登录态失效回调(HTTP 401 或业务status 401), 由 AuthProvider 注册:
+  /// 清理会话并提示"账号可能在其他设备登录"
+  static void Function(String message)? onUnauthorized;
 
   DioClient._internal();
   static final DioClient _instance = DioClient._internal();
@@ -70,6 +75,10 @@ class DioClient {
         // 解密响应体: data.isEncrypt==true → AES解密 content
         try {
           final data = response.data;
+          if (data is Map && data['status'] == 401) {
+            // 业务层登录态失效(账号在其他设备登录/被顶号)
+            _fireUnauthorized(data['message']?.toString() ?? '');
+          }
           if (data is Map && data['data'] is Map) {
             final inner = data['data'] as Map;
             if (inner['isEncrypt'] == true && inner['content'] != null) {
@@ -94,12 +103,30 @@ class DioClient {
         }
         handler.next(response);
       },
-      onError: (error, handler) {
-        logger.warn(
-            'HTTP', '✗ ${error.response?.statusCode} ${error.requestOptions.path}: ${error.message}');
-        handler.next(error);
-      },
-    ));
+        onError: (error, handler) {
+          if (error.response?.statusCode == 401) {
+            _fireUnauthorized(error.response?.data is Map
+                ? (error.response!.data['message']?.toString() ?? '')
+                : '');
+          }
+          logger.warn(
+              'HTTP', '✗ ${error.response?.statusCode} ${error.requestOptions.path}: ${error.message}');
+          handler.next(error);
+        },
+      ));
+  }
+
+  /// 登录态失效(5秒去重): 清token并通知UI层提示
+  void _fireUnauthorized(String message) {
+    final now = DateTime.now();
+    if (_lastUnauthorizedAt != null &&
+        now.difference(_lastUnauthorizedAt!) < const Duration(seconds: 5)) {
+      return;
+    }
+    _lastUnauthorizedAt = now;
+    logger.warn('HTTP', '登录态失效: $message');
+    clearToken();
+    onUnauthorized?.call(message);
   }
 
   /// 登录(表单)并保存token

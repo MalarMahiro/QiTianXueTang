@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../providers/auth_provider.dart';
+import '../account_switch_page.dart';
 import '../login_page.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -67,6 +68,12 @@ class ProfilePage extends StatelessWidget {
           _buildMenuItem(Icons.help_outline, '帮助中心', () {}),
           _buildMenuItem(Icons.settings_outlined, '设置', () {}),
           const Divider(height: 32),
+          _buildMenuItem(Icons.switch_account_outlined, '切换账号', () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AccountSwitchPage()),
+            );
+          }),
           _buildMenuItem(Icons.logout, '退出登录', () => _logout(context), color: AppTheme.errorColor),
         ],
       ),
