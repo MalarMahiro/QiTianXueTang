@@ -10,7 +10,8 @@ import '../../services/logger.dart';
 import '../../providers/exam_provider.dart';
 
 /// 成绩趋势: 总分趋势直接取考试列表; 各科趋势从本地缓存的成绩详情聚合,
-/// 可一键拉取全部历史详情(串行+间隔, 避免触发服务端风控)
+/// 可一键拉取全部历史详情(串行+间隔, 避免触发服务端风控)。
+/// 支持勾选考试参与绘图(全选/全不选/反选)与反向绘制。
 class ScoreTrendPage extends StatefulWidget {
   const ScoreTrendPage({super.key});
 
@@ -26,6 +27,8 @@ class _ScoreTrendPageState extends State<ScoreTrendPage> {
   String _selectedKm = '总分';
   // examGuid → (考试名, 时间, {km: score})
   final List<_ExamRecord> _records = [];
+  final Set<String> _checked = {};
+  bool _reversed = false;
 
   @override
   void initState() {
@@ -44,6 +47,8 @@ class _ScoreTrendPageState extends State<ScoreTrendPage> {
       if (raw != null) _fillKmScores(rec, raw);
       _records.add(rec);
     }
+    // 默认全部参与绘图
+    _checked.addAll(_records.map((r) => r.examGuid));
     if (!mounted) return;
     setState(() => _loading = false);
   }
@@ -74,24 +79,57 @@ class _ScoreTrendPageState extends State<ScoreTrendPage> {
     return ['总分', ...list];
   }
 
+  /// 当前勾选且有有效数据的记录, 按绘制顺序排列
+  List<_ExamRecord> get _plotted {
+    final km = _selectedKm;
+    var rs = _records
+        .where((r) => _checked.contains(r.examGuid))
+        .toList();
+    rs = rs.where((r) {
+      final v = km == '总分' ? r.total : r.kmScores[km];
+      // 总分 0 = 官方无数据(批阅中), 不参与绘图
+      return v != null && !(km == '总分' && v <= 0);
+    }).toList();
+    if (_reversed) rs = rs.reversed.toList();
+    return rs;
+  }
+
   List<FlSpot> get _spots {
     final km = _selectedKm;
+    final plotted = _plotted;
     final spots = <FlSpot>[];
-    for (var i = 0; i < _records.length; i++) {
-      final r = _records[i];
-      final v = km == '总分' ? r.total : r.kmScores[km];
-      // 总分 0 = 官方无数据(批阅中), 不画入趋势
-      if (v == null || (km == '总分' && v <= 0)) continue;
-      spots.add(FlSpot(spots.length.toDouble(), v));
+    for (var i = 0; i < plotted.length; i++) {
+      final v = km == '总分' ? plotted[i].total : plotted[i].kmScores[km];
+      spots.add(FlSpot(i.toDouble(), v!));
     }
     return spots;
   }
 
   String _label(int i) {
-    if (i < 0 || i >= _records.length) return '';
-    final t = _records[i].time;
+    if (i < 0 || i >= _plotted.length) return '';
+    final t = _plotted[i].time;
     final m = RegExp(r'\d{2}-\d{2}').firstMatch(t);
     return m != null ? m.group(0)! : '${i + 1}';
+  }
+
+  void _setAllChecked(bool v) {
+    setState(() {
+      _checked
+        ..clear()
+        ..addAll(_records.map((r) => r.examGuid).where((_) => v));
+    });
+  }
+
+  void _invertChecked() {
+    setState(() {
+      final next = <String>{};
+      for (final r in _records) {
+        if (!_checked.contains(r.examGuid)) next.add(r.examGuid);
+      }
+      _checked
+        ..clear()
+        ..addAll(next);
+    });
   }
 
   /// 拉取全部历史成绩详情(每次请求间隔 1.5 秒防风控)
@@ -129,6 +167,7 @@ class _ScoreTrendPageState extends State<ScoreTrendPage> {
   @override
   Widget build(BuildContext context) {
     final spots = _spots;
+    final plotted = _plotted;
     final maxY = spots.isEmpty
         ? 100.0
         : spots.map((s) => s.y).reduce((a, b) => a > b ? a : b) * 1.2;
@@ -146,109 +185,156 @@ class _ScoreTrendPageState extends State<ScoreTrendPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Row(
-                    children: [
-                      const Text('科目：',
-                          style: TextStyle(color: AppTheme.textSecondary)),
-                      Expanded(
-                        child: DropdownButton<String>(
-                          value: _allKms.contains(_selectedKm)
-                              ? _selectedKm
-                              : '总分',
-                          isExpanded: true,
-                          items: _allKms
-                              .map((k) => DropdownMenuItem(
-                                  value: k, child: Text(k)))
-                              .toList(),
-                          onChanged: (v) =>
-                              setState(() => _selectedKm = v ?? '总分'),
-                        ),
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Row(
+                  children: [
+                    const Text('科目：',
+                        style: TextStyle(color: AppTheme.textSecondary)),
+                    Expanded(
+                      child: DropdownButton<String>(
+                        value: _allKms.contains(_selectedKm)
+                            ? _selectedKm
+                            : '总分',
+                        isExpanded: true,
+                        items: _allKms
+                            .map((k) => DropdownMenuItem(
+                                value: k, child: Text(k)))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _selectedKm = v ?? '总分'),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 260,
-                    child: spots.length < 2
-                        ? Center(
-                            child: Text(
-                            spots.isEmpty ? '暂无数据' : '只有一场有数据，无法画趋势线',
-                            style: const TextStyle(
-                                color: AppTheme.textSecondary),
-                          ))
-                        : LineChart(
-                            LineChartData(
-                              minY: 0,
-                              maxY: maxY,
-                              gridData: FlGridData(
-                                  show: true,
-                                  drawVerticalLine: false,
-                                  horizontalInterval: maxY > 0 ? maxY / 5 : 1),
-                              titlesData: FlTitlesData(
-                                leftTitles: const AxisTitles(
-                                  sideTitles: SideTitles(
-                                      showTitles: true, reservedSize: 40),
-                                ),
-                                bottomTitles: AxisTitles(
-                                  sideTitles: SideTitles(
-                                    showTitles: true,
-                                    reservedSize: 28,
-                                    getTitlesWidget: (v, meta) => Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Text(_label(v.toInt()),
-                                          style: const TextStyle(
-                                              fontSize: 10,
-                                              color: AppTheme.textSecondary)),
-                                    ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // 绘图控制: 反向绘制 + 勾选快捷键
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    FilterChip(
+                      label: const Text('反向绘制'),
+                      selected: _reversed,
+                      onSelected: (v) => setState(() => _reversed = v),
+                    ),
+                    ActionChip(
+                      label: const Text('全选'),
+                      onPressed: () => _setAllChecked(true),
+                    ),
+                    ActionChip(
+                      label: const Text('全不选'),
+                      onPressed: () => _setAllChecked(false),
+                    ),
+                    ActionChip(
+                      label: const Text('反选'),
+                      onPressed: _invertChecked,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 260,
+                  child: spots.length < 2
+                      ? Center(
+                          child: Text(
+                          spots.isEmpty ? '暂无数据（勾选考试参与绘图）' : '只有一场有数据，无法画趋势线',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: AppTheme.textSecondary),
+                        ))
+                      : LineChart(
+                          LineChartData(
+                            minY: 0,
+                            maxY: maxY,
+                            gridData: FlGridData(
+                                show: true,
+                                drawVerticalLine: false,
+                                horizontalInterval: maxY > 0 ? maxY / 5 : 1),
+                            titlesData: FlTitlesData(
+                              leftTitles: const AxisTitles(
+                                sideTitles: SideTitles(
+                                    showTitles: true, reservedSize: 40),
+                              ),
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 28,
+                                  getTitlesWidget: (v, meta) => Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(_label(v.toInt()),
+                                        style: const TextStyle(
+                                            fontSize: 10,
+                                            color: AppTheme.textSecondary)),
                                   ),
                                 ),
-                                topTitles: const AxisTitles(
-                                    sideTitles: SideTitles(showTitles: false)),
-                                rightTitles: const AxisTitles(
-                                    sideTitles: SideTitles(showTitles: false)),
                               ),
-                              borderData: FlBorderData(
-                                  show: true,
-                                  border: Border.all(
-                                      color: Colors.grey.shade300)),
-                              lineBarsData: [
-                                LineChartBarData(
-                                  spots: spots,
-                                  isCurved: true,
-                                  color: AppTheme.primaryColor,
-                                  barWidth: 3,
-                                  dotData: const FlDotData(show: true),
-                                ),
-                              ],
+                              topTitles: const AxisTitles(
+                                  sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: const AxisTitles(
+                                  sideTitles: SideTitles(showTitles: false)),
                             ),
+                            borderData: FlBorderData(
+                                show: true,
+                                border: Border.all(color: Colors.grey.shade300)),
+                            lineBarsData: [
+                              LineChartBarData(
+                                spots: spots,
+                                isCurved: true,
+                                color: AppTheme.primaryColor,
+                                barWidth: 3,
+                                dotData: const FlDotData(show: true),
+                              ),
+                            ],
                           ),
+                        ),
                   ),
-                  if (_fetchText.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(_fetchText,
-                          style: const TextStyle(
-                              fontSize: 12, color: AppTheme.primaryColor)),
+                if (_fetchText.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(_fetchText,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.primaryColor)),
+                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Text('明细',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    Text(
+                      '已选 ${_checked.length}/${_records.length}',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppTheme.textSecondary),
                     ),
-                  const SizedBox(height: 12),
-                  const Text('明细', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  ..._records.map((r) {
-                    final v =
-                        _selectedKm == '总分' ? r.total : r.kmScores[_selectedKm];
-                    // 总分 0 = 官方无数据; 单科 0 分可能是真实成绩, 保留
-                    final invalid =
-                        v == null || (v <= 0 && _selectedKm == '总分');
-                    return ListTile(
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ..._records.map((r) {
+                  final checked = _checked.contains(r.examGuid);
+                  final v =
+                      _selectedKm == '总分' ? r.total : r.kmScores[_selectedKm];
+                  // 总分 0 = 官方无数据; 单科 0 分可能是真实成绩, 保留
+                  final invalid =
+                      v == null || (v <= 0 && _selectedKm == '总分');
+                  return Opacity(
+                    opacity: checked ? 1 : 0.45,
+                    child: ListTile(
                       dense: true,
+                      leading: Checkbox(
+                        value: checked,
+                        onChanged: (_) => setState(() {
+                          checked
+                              ? _checked.remove(r.examGuid)
+                              : _checked.add(r.examGuid);
+                        }),
+                      ),
                       title: Text(r.name,
                           maxLines: 1, overflow: TextOverflow.ellipsis),
-                      subtitle: Text(r.time, style: const TextStyle(fontSize: 11)),
+                      subtitle:
+                          Text(r.time, style: const TextStyle(fontSize: 11)),
                       trailing: Text(
                         invalid ? '暂无' : _selectedKm == '总分' ? '$v 分' : '$v',
                         style: TextStyle(
@@ -257,15 +343,15 @@ class _ScoreTrendPageState extends State<ScoreTrendPage> {
                                 ? AppTheme.textHint
                                 : AppTheme.primaryColor),
                       ),
-                    );
-                  }),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '提示：各科历史数据来自已浏览过的考试详情，点右上角可拉取全部历史（每次请求间隔1.5秒，避免触发服务端风控）。',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textHint),
-                  ),
-                ],
-              ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 8),
+                const Text(
+                  '提示：各科历史数据来自已浏览过的考试详情，点右上角可拉取全部历史（每次请求间隔1.5秒，避免触发服务端风控）。勾选控制哪些考试参与绘图。',
+                  style: TextStyle(fontSize: 11, color: AppTheme.textHint),
+                ),
+              ],
             ),
     );
   }
