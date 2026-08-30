@@ -21,6 +21,8 @@ class AuthProvider extends ChangeNotifier {
   bool _handlingAuthExpired = false;
   bool _switching = false;
   int _generation = 0; // 会话代际: 切换/登出时+1, 用于丢弃迟到的旧账号刷新结果
+  DateTime? _lastSwitchAt; // 切换冷却: 服务端对登录频率有限制, 频繁切换可能被临时限流
+  static const Duration _switchCooldown = Duration(seconds: 30);
   UserModel? _user;
   bool _isLoading = false;
   bool _isInitialized = false;
@@ -119,8 +121,16 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// 切换账号: 优先用保存的密码静默重登(拿到新token), 否则用缓存的token
-  Future<bool> switchAccount(SavedAccount account) async {
-    if (_switching) return false;
+  /// 返回 null 表示成功, 否则为错误提示
+  Future<String?> switchAccount(SavedAccount account) async {
+    if (_switching) return '正在切换中，请稍候';
+    if (_lastSwitchAt != null) {
+      final elapsed = DateTime.now().difference(_lastSwitchAt!);
+      if (elapsed < _switchCooldown) {
+        final remain = (_switchCooldown - elapsed).inSeconds + 1;
+        return '切换过于频繁，请 $remain 秒后再试（频繁登录可能触发服务端限制）';
+      }
+    }
     _switching = true;
     try {
       // 先把当前账号存档(更新token/资料)
@@ -135,10 +145,13 @@ class AuthProvider extends ChangeNotifier {
         } catch (_) {}
       }
       target ??= _userFromSaved(account);
-      if (target == null) return false;
+      if (target == null) {
+        return '切换失败：该账号的登录凭据可能已失效，请删除后重新登录该账号';
+      }
       await _applyAccount(target,
           password: account.password.isNotEmpty ? account.password : null);
-      return true;
+      _lastSwitchAt = DateTime.now();
+      return null;
     } finally {
       _switching = false;
     }

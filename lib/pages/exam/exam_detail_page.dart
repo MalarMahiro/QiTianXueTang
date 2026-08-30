@@ -23,6 +23,12 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
     });
   }
 
+  /// 分数显示: 有小数保留小数(331.5/84.5), 整数不带 .0(87/332)
+  String _fmt(double? v) {
+    if (v == null) return '-';
+    return v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -50,21 +56,21 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                         const Text('总分', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
                         const SizedBox(height: 8),
                         Text(
-                          exam.studentScore?.toStringAsFixed(0) ?? '-',
+                          _fmt(exam.studentScore),
                           style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: AppTheme.primaryColor),
                         ),
                         Text(
-                          '满分 ${exam.totalScore?.toStringAsFixed(0) ?? '-'}',
+                          '满分 ${_fmt(exam.totalScore)}',
                           style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
                         ),
                         const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            _buildStatItem('班级排名', exam.classRank?.toStringAsFixed(0) ?? '-'),
-                            _buildStatItem('年级排名', exam.gradeRank?.toStringAsFixed(0) ?? '-'),
-                            _buildStatItem('班级平均', exam.classAvg?.toStringAsFixed(0) ?? '-'),
-                            _buildStatItem('年级平均', exam.gradeAvg?.toStringAsFixed(0) ?? '-'),
+                            _buildStatItem('班级排名', _fmt(exam.classRank)),
+                            _buildStatItem('年级排名', _fmt(exam.gradeRank)),
+                            _buildStatItem('班级平均', _fmt(exam.classAvg)),
+                            _buildStatItem('年级平均', _fmt(exam.gradeAvg)),
                           ],
                         ),
                       ],
@@ -93,7 +99,7 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${subject.score?.toStringAsFixed(1) ?? '-'} / ${subject.fullScore?.toStringAsFixed(0) ?? '-'}',
+                              '${_fmt(subject.score)} / ${_fmt(subject.fullScore)}',
                               style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             if (subject.grade != null)

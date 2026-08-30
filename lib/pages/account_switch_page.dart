@@ -45,19 +45,41 @@ class AccountSwitchPage extends StatelessWidget {
           ),
         ],
       ),
-      body: auth.savedAccounts.isEmpty
-          ? const Center(
-              child: Text('暂无已保存账号\n登录后账号会自动保存在这里',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppTheme.textSecondary)))
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                for (final account in auth.savedAccounts)
-                  _buildAccountCard(context, auth, account,
-                      isCurrent: account.userCode == currentUserCode),
-              ],
+      body: Column(
+        children: [
+          // 频控提醒: 服务端对登录频率有限制, 频繁切换可能被临时限流
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
             ),
+            child: const Text(
+              '温馨提示：服务端对登录请求频率有限制，两次切换请间隔 30 秒以上；'
+              '短时间内频繁切换/请求可能导致 IP 被临时限制，届时请更换网络或稍后再试。',
+              style: TextStyle(fontSize: 12, color: Colors.orange),
+            ),
+          ),
+          Expanded(
+            child: auth.savedAccounts.isEmpty
+                ? const Center(
+                    child: Text('暂无已保存账号\n登录后账号会自动保存在这里',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppTheme.textSecondary)))
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      for (final account in auth.savedAccounts)
+                        _buildAccountCard(context, auth, account,
+                            isCurrent: account.userCode == currentUserCode),
+                    ],
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -146,14 +168,14 @@ class AccountSwitchPage extends StatelessWidget {
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
-    final ok = await auth.switchAccount(account);
+    final err = await auth.switchAccount(account);
     if (!context.mounted) return;
     Navigator.pop(context); // 关闭loading
-    if (ok) {
+    if (err == null) {
       Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('切换失败：该账号的登录凭据可能已失效，请删除后重新登录该账号')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(err)));
     }
   }
 
