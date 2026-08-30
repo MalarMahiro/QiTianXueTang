@@ -98,23 +98,22 @@ class _AnswerSheetPageState extends State<AnswerSheetPage> {
     });
   }
 
+  Future<bool> _ensureGalleryPermission() async {
+    if (!Platform.isAndroid) return true;
+    // Android 9 及以下写相册需要存储权限, 10+ 走 MediaStore 无需授权
+    final sdkInt = int.tryParse(Platform.version.split('.').first) ?? 30;
+    if (sdkInt >= 29) return true;
+    final hasAccess = await Gal.requestAccess();
+    if (!hasAccess && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未授予存储权限，无法保存')));
+    }
+    return hasAccess;
+  }
+
   Future<void> _saveCurrent() async {
     if (_imageUrls.isEmpty || _saving) return;
-
-    // Android 9 及以下写相册需要存储权限, 10+ 走 MediaStore 无需授权
-    if (Platform.isAndroid) {
-      final sdkInt = int.tryParse(Platform.version.split('.').first) ?? 30;
-      if (sdkInt < 29) {
-        final hasAccess = await Gal.requestAccess();
-        if (!hasAccess) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('未授予存储权限，无法保存')));
-          }
-          return;
-        }
-      }
-    }
+    if (!await _ensureGalleryPermission()) return;
 
     setState(() => _saving = true);
     try {
@@ -130,7 +129,7 @@ class _AnswerSheetPageState extends State<AnswerSheetPage> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('已保存到系统相册（七天学堂相册）')));
+            const SnackBar(content: Text('已保存到系统相册（七天学堂）')));
       }
     } catch (e) {
       logger.error('AnswerSheet', '保存失败', e);
@@ -140,6 +139,41 @@ class _AnswerSheetPageState extends State<AnswerSheetPage> {
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// 批量保存全部页
+  Future<void> _saveAll() async {
+    if (_imageUrls.isEmpty || _saving) return;
+    if (!await _ensureGalleryPermission()) return;
+    setState(() => _saving = true);
+    var saved = 0;
+    try {
+      for (var i = 0; i < _imageUrls.length; i++) {
+        setState(() => _status = '正在保存第 ${i + 1}/${_imageUrls.length} 页...');
+        final resp = await Dio().get<List<int>>(_imageUrls[i],
+            options: Options(responseType: ResponseType.bytes));
+        await Gal.putImageBytes(Uint8List.fromList(resp.data!),
+            name: '答题卡_${widget.km}_${i + 1}.jpg', album: '七天学堂');
+        saved++;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已保存 $saved 张到系统相册（七天学堂）')));
+      }
+    } catch (e) {
+      logger.error('AnswerSheet', '批量保存失败', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('保存失败: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _status = '';
+        });
+      }
     }
   }
 
@@ -153,6 +187,12 @@ class _AnswerSheetPageState extends State<AnswerSheetPage> {
         title: Text('${widget.km} · 答题卡',
             style: const TextStyle(color: Colors.white)),
         actions: [
+          if (_imageUrls.length > 1)
+            IconButton(
+              onPressed: _saving ? null : _saveAll,
+              icon: const Icon(Icons.save),
+              tooltip: '全部保存',
+            ),
           IconButton(
             onPressed: _saving ? null : _saveCurrent,
             icon: _saving
@@ -161,7 +201,7 @@ class _AnswerSheetPageState extends State<AnswerSheetPage> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.download),
-            tooltip: '保存',
+            tooltip: '保存本页',
           ),
         ],
       ),

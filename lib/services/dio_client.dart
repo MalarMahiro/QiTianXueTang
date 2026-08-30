@@ -22,6 +22,10 @@ class DioClient {
   /// 清理会话并提示"账号可能在其他设备登录"
   static void Function(String message)? onUnauthorized;
 
+  /// 401 静默重登: AuthProvider 注册, 用保存的密码重登并返回新 token;
+  /// 返回 null 则走 onUnauthorized 弹窗
+  static Future<String?> Function()? reloginProvider;
+
   DioClient._internal();
   static final DioClient _instance = DioClient._internal();
   factory DioClient() => _instance;
@@ -103,8 +107,34 @@ class DioClient {
         }
         handler.next(response);
       },
-        onError: (error, handler) {
-          if (error.response?.statusCode == 401) {
+        onError: (error, handler) async {
+          final code = error.response?.statusCode;
+          final path = error.requestOptions.path;
+          // 401 静默重登: 用保存的密码重登拿新 token 后原请求重放一次
+          if (code == 401 &&
+              error.requestOptions.extra['__retried'] != true &&
+              reloginProvider != null) {
+            logger.warn('HTTP', '401, 尝试静默重登后重放: $path');
+            String? newToken;
+            try {
+              newToken = await reloginProvider!();
+            } catch (e) {
+              logger.warn('HTTP', '静默重登异常: $e');
+            }
+            if (newToken != null && newToken.isNotEmpty) {
+              final opts = error.requestOptions;
+              opts.extra['__retried'] = true;
+              opts.headers['Token'] = newToken;
+              try {
+                final resp = await _dio.fetch(opts);
+                logger.debug('HTTP', '静默重登后重试成功: $path');
+                return handler.resolve(resp);
+              } catch (e) {
+                logger.warn('HTTP', '重放仍失败: $e');
+              }
+            }
+          }
+          if (code == 401) {
             _fireUnauthorized(error.response?.data is Map
                 ? (error.response!.data['message']?.toString() ?? '')
                 : '');

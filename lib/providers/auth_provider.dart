@@ -11,6 +11,7 @@ import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/dio_client.dart';
 import '../services/exam_service.dart';
+import '../services/logger.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -50,6 +51,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> init() async {
     await _loadSavedAccounts();
     DioClient.onUnauthorized = _onUnauthorized;
+    DioClient.reloginProvider = _silentRelogin;
     final token = await DioClient().getToken();
     if (token != null && token.isNotEmpty) {
       // 先用 token 构造最小用户，保证 isLoggedIn=true，避免重启后掉登录
@@ -199,6 +201,45 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // ─── 登录态失效检测 ────────────────────────────────────────
+
+  Future<String?>? _reloginFuture;
+
+  /// 401 静默重登: 用当前账号保存的密码重登, 返回新 token (失败返回 null)。
+  /// 并发 401 共享同一次重登, 避免连环触发登录接口引发风控。
+  Future<String?> _silentRelogin() async {
+    if (_reloginFuture != null) return _reloginFuture;
+    final completer = Completer<String?>();
+    _reloginFuture = completer.future;
+    try {
+      final code = _user?.userId ?? '';
+      await _loadSavedAccounts();
+      SavedAccount? acc;
+      for (final a in _savedAccounts) {
+        if (a.userCode == code && a.password.isNotEmpty) {
+          acc = a;
+          break;
+        }
+      }
+      if (acc == null) {
+        completer.complete(null);
+        return null;
+      }
+      logger.info('Auth', '静默重登: $code');
+      final user = await _authService.loginByPassword(acc.userCode, acc.password);
+      if (user == null) {
+        completer.complete(null);
+        return null;
+      }
+      await _applyAccount(user, password: acc.password);
+      completer.complete(user.token);
+      return user.token;
+    } catch (_) {
+      completer.complete(null);
+      return null;
+    } finally {
+      Future.delayed(const Duration(milliseconds: 100), () => _reloginFuture = null);
+    }
+  }
 
   /// DioClient 检测到 401(HTTP或业务status): 清会话并弹窗引导重登
   void _onUnauthorized(String message) {

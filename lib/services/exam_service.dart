@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import '../../models/exam_model.dart';
 import 'dio_client.dart';
+import 'local_cache.dart';
 import 'logger.dart';
 
 /// 成绩服务
@@ -35,6 +38,7 @@ class ExamService {
         grade: grade,
       );
       if (data == null) return [];
+      await LocalCache.saveExamList(data);
       final list = data['list'];
       if (list is! List) return [];
       logger.debug('Exam', '考试列表 ${list.length} 条');
@@ -92,6 +96,7 @@ class ExamService {
 
       logger.debug('Exam', 'ScoreReport JSON keys: ${raw.keys.toList()}');
       logger.debug('Exam', 'ScoreReport 原始响应: $raw');
+      await LocalCache.saveExamDetail(examId, raw);
 
       // 真实结构（与官方JS一致）: {km_info:{score,fullScore,grade}, km_list:[{km,score,fullScore,grade,...}], other}
       final flat = Map<String, dynamic>.from(raw);

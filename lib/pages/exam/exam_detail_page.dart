@@ -19,14 +19,48 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
     super.initState();
     // 使用 addPostFrameCallback 避免在 build 阶段调用 notifyListeners
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ExamProvider>().loadExamDetail(widget.examId);
+      final provider = context.read<ExamProvider>();
+      provider.loadExamDetail(widget.examId);
+      provider.loadSubjectExtras(widget.examId);
     });
   }
 
   /// 分数显示: 有小数保留小数(331.5/84.5), 整数不带 .0(87/332)
-  String _fmt(double? v) {
+  String _fmt(dynamic v) {
     if (v == null) return '-';
-    return v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
+    if (v is num) return v % 1 == 0 ? v.toStringAsFixed(0) : v.toString();
+    final d = double.tryParse(v.toString());
+    if (d == null) return '-';
+    return d % 1 == 0 ? d.toStringAsFixed(0) : d.toString();
+  }
+
+  Map<String, dynamic>? _essayOf(Map<String, dynamic>? extra) {
+    if (extra == null) return null;
+    final ar = extra['ai_essay_report'];
+    if (ar is Map && ar['essayThInfo'] is Map) {
+      return (ar['essayThInfo'] as Map).cast<String, dynamic>();
+    }
+    return null;
+  }
+
+  String? _conclusionOf(Map<String, dynamic>? extra) {
+    if (extra == null) return null;
+    final s = extra['summary'];
+    if (s is! Map) return null;
+    final raw = s['conclusion']?.toString() ?? '';
+    if (raw.isEmpty) return null;
+    return _stripHtml(raw);
+  }
+
+  String _stripHtml(String s) {
+    return s
+        .replaceAll(RegExp(r'<br\s*/?>'), '\n')
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&amp;', '&')
+        .trim();
   }
 
   @override
@@ -79,12 +113,43 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                 ),
                 const SizedBox(height: 16),
 
+                // AI 总结 (Subjects 接口免费数据, 官方将其折叠在模糊层后)
+                Builder(builder: (context) {
+                  final c =
+                      _conclusionOf(provider.subjectExtra(widget.examId, '总分'));
+                  if (c == null || c.isEmpty) return const SizedBox.shrink();
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('总结',
+                              style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Text(c,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  height: 1.5,
+                                  color: AppTheme.textSecondary)),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 16),
+
                 // 各科成绩
                 const Text('各科成绩', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
                 if (exam.subjects != null && exam.subjects!.isNotEmpty)
                   ...exam.subjects!.asMap().entries.map((entry) {
                     final subject = entry.value;
+                    final extra =
+                        provider.subjectExtra(widget.examId, subject.subjectName);
+                    final essay = _essayOf(extra);
+                    final conclusion = _conclusionOf(extra);
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
@@ -100,12 +165,32 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                           children: [
                             Text(
                               '${_fmt(subject.score)} / ${_fmt(subject.fullScore)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             if (subject.grade != null)
                               Text(
                                 '等级: ${subject.grade}',
-                                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textSecondary),
+                              ),
+                            if (essay != null)
+                              Text(
+                                '作文 ${_fmt(essay['score'])}/${_fmt(essay['full'])} · '
+                                '班级均分 ${_fmt(essay['avg'])} · 最高 ${_fmt(essay['max'])}',
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppTheme.primaryColor),
+                              ),
+                            if (conclusion != null && conclusion.isNotEmpty)
+                              Text(
+                                conclusion,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    height: 1.4,
+                                    color: AppTheme.textSecondary),
                               ),
                           ],
                         ),
