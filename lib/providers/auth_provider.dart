@@ -20,6 +20,7 @@ class AuthProvider extends ChangeNotifier {
   List<SavedAccount> _savedAccounts = [];
   bool _handlingAuthExpired = false;
   bool _switching = false;
+  int _generation = 0; // 会话代际: 切换/登出时+1, 用于丢弃迟到的旧账号刷新结果
   UserModel? _user;
   bool _isLoading = false;
   bool _isInitialized = false;
@@ -152,9 +153,22 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// 应用某个账号: 恢复资料/上下文并记住
+  /// 应用某个账号: 重绑token/恢复资料/上下文并记住
   Future<void> _applyAccount(UserModel user, {String? password}) async {
+    _generation++; // 作废在途的旧账号刷新
     _user = user;
+    // 关键: 将目标账号token重绑进DioClient。此前token回退路径漏掉此步,
+    // 导致切换后请求仍携带旧账号token, 永远显示旧账号数据
+    if (user.token != null && user.token!.isNotEmpty) {
+      await DioClient().saveToken(user.token!);
+    }
+    if (password == null) {
+      // 非重登路径(直接用缓存token): 强制重新协商会话密钥,
+      // 避免会话AES密钥仍绑定上一个账号导致加密接口异常
+      try {
+        await DioClient().negotiateKey();
+      } catch (_) {}
+    }
     final prefs = await SharedPreferences.getInstance();
     if (user.schoolGuid?.isNotEmpty == true) {
       await prefs.setString('schoolGuid', user.schoolGuid!);
@@ -177,6 +191,7 @@ class AuthProvider extends ChangeNotifier {
   void _onUnauthorized(String message) {
     if (_handlingAuthExpired) return;
     _handlingAuthExpired = true;
+    _generation++;
     _user = null;
     notifyListeners();
     final ctx = appNavigatorKey.currentContext;
@@ -211,8 +226,11 @@ class AuthProvider extends ChangeNotifier {
   Future<void> refreshUserInfo() => _refreshUserInfo();
 
   Future<void> _refreshUserInfo() async {
+    final gen = _generation;
     try {
       final user = await _authService.getUserInfo();
+      // 会话已在请求期间切换/登出, 丢弃迟到的结果, 防止覆盖新账号
+      if (gen != _generation) return;
       if (user != null) {
         _user = user;
         await _upsertSavedAccount(user);
@@ -270,6 +288,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _generation++; // 作废在途刷新, 防止登出后又被旧结果写回登录态
     await _authService.logout();
     _user = null;
     // 清除保存的上下文
