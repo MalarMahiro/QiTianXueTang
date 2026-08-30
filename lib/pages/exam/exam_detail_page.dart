@@ -43,26 +43,6 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
     return null;
   }
 
-  String? _conclusionOf(Map<String, dynamic>? extra) {
-    if (extra == null) return null;
-    final s = extra['summary'];
-    if (s is! Map) return null;
-    final raw = s['conclusion']?.toString() ?? '';
-    if (raw.isEmpty) return null;
-    return _stripHtml(raw);
-  }
-
-  String _stripHtml(String s) {
-    return s
-        .replaceAll(RegExp(r'<br\s*/?>'), '\n')
-        .replaceAll(RegExp(r'<[^>]*>'), '')
-        .replaceAll('&nbsp;', ' ')
-        .replaceAll('&gt;', '>')
-        .replaceAll('&lt;', '<')
-        .replaceAll('&amp;', '&')
-        .trim();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -113,43 +93,14 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // AI 总结 (Subjects 接口免费数据, 官方将其折叠在模糊层后)
-                Builder(builder: (context) {
-                  final c =
-                      _conclusionOf(provider.subjectExtra(widget.examId, '总分'));
-                  if (c == null || c.isEmpty) return const SizedBox.shrink();
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('总结',
-                              style: TextStyle(
-                                  fontSize: 15, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          Text(c,
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  height: 1.5,
-                                  color: AppTheme.textSecondary)),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-                const SizedBox(height: 16),
-
                 // 各科成绩
                 const Text('各科成绩', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 12),
                 if (exam.subjects != null && exam.subjects!.isNotEmpty)
                   ...exam.subjects!.asMap().entries.map((entry) {
                     final subject = entry.value;
-                    final extra =
-                        provider.subjectExtra(widget.examId, subject.subjectName);
-                    final essay = _essayOf(extra);
-                    final conclusion = _conclusionOf(extra);
+                    final essay = _essayOf(
+                        provider.subjectExtra(widget.examId, subject.subjectName));
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
@@ -181,16 +132,6 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                                 '班级均分 ${_fmt(essay['avg'])} · 最高 ${_fmt(essay['max'])}',
                                 style: const TextStyle(
                                     fontSize: 12, color: AppTheme.primaryColor),
-                              ),
-                            if (conclusion != null && conclusion.isNotEmpty)
-                              Text(
-                                conclusion,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontSize: 11,
-                                    height: 1.4,
-                                    color: AppTheme.textSecondary),
                               ),
                           ],
                         ),

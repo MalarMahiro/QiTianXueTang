@@ -52,7 +52,8 @@ class _ScoreTrendPageState extends State<ScoreTrendPage> {
     final kmInfo = raw['km_info'];
     if (kmInfo is Map) {
       final s = double.tryParse(kmInfo['score']?.toString() ?? '');
-      if (s != null && rec.total == null) rec.total = s;
+      // 0 分 = 官方未提供总分(批阅中/无总分界面), 不当作真实数据
+      if (s != null && s > 0 && rec.total == null) rec.total = s;
     }
     final kmList = raw['km_list'];
     if (kmList is List) {
@@ -79,7 +80,9 @@ class _ScoreTrendPageState extends State<ScoreTrendPage> {
     for (var i = 0; i < _records.length; i++) {
       final r = _records[i];
       final v = km == '总分' ? r.total : r.kmScores[km];
-      if (v != null) spots.add(FlSpot(spots.length.toDouble(), v));
+      // 总分 0 = 官方无数据(批阅中), 不画入趋势
+      if (v == null || (km == '总分' && v <= 0)) continue;
+      spots.add(FlSpot(spots.length.toDouble(), v));
     }
     return spots;
   }
@@ -238,16 +241,21 @@ class _ScoreTrendPageState extends State<ScoreTrendPage> {
                   ..._records.map((r) {
                     final v =
                         _selectedKm == '总分' ? r.total : r.kmScores[_selectedKm];
+                    // 总分 0 = 官方无数据; 单科 0 分可能是真实成绩, 保留
+                    final invalid =
+                        v == null || (v <= 0 && _selectedKm == '总分');
                     return ListTile(
                       dense: true,
                       title: Text(r.name,
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(r.time, style: const TextStyle(fontSize: 11)),
                       trailing: Text(
-                        v == null ? '暂无' : (_selectedKm == '总分' ? '$v 分' : '$v'),
-                        style: const TextStyle(
+                        invalid ? '暂无' : _selectedKm == '总分' ? '$v 分' : '$v',
+                        style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: AppTheme.primaryColor),
+                            color: invalid
+                                ? AppTheme.textHint
+                                : AppTheme.primaryColor),
                       ),
                     );
                   }),
