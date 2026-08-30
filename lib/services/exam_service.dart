@@ -6,15 +6,22 @@ import 'logger.dart';
 /// ponytail: 依据真实抓包。列表用 szone-score/exam/getClaimExams (AES-ECB)，
 /// 需要 schoolGuid/grade 上下文；详情(单科报告)属下一批(需请求侧AES-GCM加密)。
 class ExamService {
+  // 单例: AuthProvider/ExamProvider 各处持有的必须是同一实例, 否则上下文丢失
+  static final ExamService _instance = ExamService._internal();
+  factory ExamService() => _instance;
+  ExamService._internal();
+
   final DioClient _client = DioClient();
   // 需要调用方先配置上下文(setContext后才有值)
   String schoolGuid = '';
   String grade = '';
+  String ruCode = '';
 
   /// 设置业务上下文(登录/GetUserInfo后调用)
-  void setContext({String? schoolGuid, String? grade}) {
+  void setContext({String? schoolGuid, String? grade, String? ruCode}) {
     if (schoolGuid != null && schoolGuid.isNotEmpty) this.schoolGuid = schoolGuid;
     if (grade != null && grade.isNotEmpty) this.grade = grade;
+    if (ruCode != null && ruCode.isNotEmpty) this.ruCode = ruCode;
   }
 
   /// 获取考试列表
@@ -64,32 +71,59 @@ class ExamService {
         logger.error('Exam', '缺少上下文 schoolGuid=$schoolGuid grade=$grade');
         return null;
       }
-      logger.debug('Exam', '开始获取考试详情 examGuid=$examId schoolGuid=$schoolGuid grade=$grade');
+      logger.debug('Exam', '开始获取考试详情 examGuid=$examId schoolGuid=$schoolGuid grade=$grade ruCode=$ruCode');
       final raw = await _client.getScoreReport(
         examGuid: examId,
         schoolGuid: schoolGuid,
         grade: grade,
+        ruCode: ruCode,
+        km: '总分',
       );
       if (raw == null) {
         logger.error('Exam', 'ScoreReport 返回 null');
         return null;
       }
-      
+
       // 检查响应是否包含服务端错误（如 500）
       if (raw['status'] == 500) {
         logger.error('Exam', 'ScoreReport 服务端错误: ${raw['message']}');
         return null;
       }
-      
-      logger.debug('Exam', 'ScoreReport 响应类型: ${raw.runtimeType}');
-      // raw 一定是 Map 类型（来自 _dataOf 返回）
+
       logger.debug('Exam', 'ScoreReport JSON keys: ${raw.keys.toList()}');
-      final preview = raw.toString();
-      logger.debug('Exam', 'ScoreReport JSON preview: ${preview.length > 200 ? preview.substring(0, 200) : preview}');
-      // 用防御性映射解析：ScoreReport 响应含总分/各科/排名等
-      final exam = ExamModel.fromDetailJson(raw);
-      logger.debug('Exam', 'ScoreReport 解析后 exam: $exam');
-      logger.debug('Exam', 'examName=${exam.examName}, studentScore=${exam.studentScore}, subjects=${exam.subjects?.length}');
+      logger.debug('Exam', 'ScoreReport 原始响应: $raw');
+
+      // 真实结构（与官方JS一致）: {km_list:[{km,scoreInfo,summary,...}], km_info:{...}}
+      // 摊平"总分"条目 + 组装各科列表，再交给防御性字段映射
+      final flat = Map<String, dynamic>.from(raw);
+      final kmList = raw['km_list'];
+      if (kmList is List && kmList.isNotEmpty) {
+        Map<String, dynamic> pickTotal() {
+          for (final e in kmList) {
+            if (e is Map && e['km'] == '总分') {
+              return e.cast<String, dynamic>();
+            }
+          }
+          return (kmList.first as Map).cast<String, dynamic>();
+        }
+        final total = pickTotal();
+        flat.addAll(((total['scoreInfo'] as Map?) ?? const {}).cast<String, dynamic>());
+        flat.addAll(((total['summary'] as Map?) ?? const {}).cast<String, dynamic>());
+        flat.addAll(total); // 条目上的直接字段也并入(km/rating等)
+        flat['km'] = total['km'];
+        // 各科列表: 排除总分条目, 条目字段直接就是 km/score/fullScore/grade...
+        flat['subjects'] = kmList
+            .whereType<Map>()
+            .where((e) => e['km'] != '总分')
+            .map((e) => e.cast<String, dynamic>())
+            .toList();
+        logger.debug('Exam', 'km_list ${kmList.length} 条, 已摊平总分与各科');
+      }
+
+      final exam = ExamModel.fromDetailJson(flat);
+      logger.debug('Exam', '解析后 examName=${exam.examName}, studentScore=${exam.studentScore}, '
+          'totalScore=${exam.totalScore}, classRank=${exam.classRank}, gradeRank=${exam.gradeRank}, '
+          'subjects=${exam.subjects?.length}');
       return exam;
     } catch (e) {
       logger.error('Exam', '获取考试详情失败: $e');
@@ -105,6 +139,7 @@ class ExamService {
         examGuid: examId,
         schoolGuid: schoolGuid,
         grade: grade,
+        ruCode: ruCode,
       );
       if (raw == null) return null;
       logger.debug('Exam', 'Subjects 原始数据: $raw');

@@ -93,12 +93,12 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${subject.score?.toStringAsFixed(0) ?? '-'} / ${subject.fullScore?.toStringAsFixed(0) ?? '-'}',
+                              '${subject.score?.toStringAsFixed(1) ?? '-'} / ${subject.fullScore?.toStringAsFixed(0) ?? '-'}',
                               style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
-                            if (subject.classAvg != null)
+                            if (subject.grade != null)
                               Text(
-                                '班级平均: ${subject.classAvg!.toStringAsFixed(1)}',
+                                '等级: ${subject.grade}',
                                 style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                               ),
                           ],

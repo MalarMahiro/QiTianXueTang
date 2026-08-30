@@ -18,8 +18,8 @@ class ExamProvider extends ChangeNotifier {
   int get unClaimCount => _unClaimCount;
 
   /// 登录后/用户信息更新后配置业务上下文
-  void updateContext({String? schoolGuid, String? grade}) {
-    _examService.setContext(schoolGuid: schoolGuid, grade: grade);
+  void updateContext({String? schoolGuid, String? grade, String? ruCode}) {
+    _examService.setContext(schoolGuid: schoolGuid, grade: grade, ruCode: ruCode);
   }
 
   Future<void> loadExams({int page = 1}) async {

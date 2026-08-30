@@ -23,6 +23,7 @@ class _ExamListPageState extends State<ExamListPage> {
       context.read<ExamProvider>().updateContext(
             schoolGuid: user?.schoolGuid,
             grade: user?.grade,
+            ruCode: user?.ruCode,
           );
       final provider = context.read<ExamProvider>();
       if (user?.studentName != null) {

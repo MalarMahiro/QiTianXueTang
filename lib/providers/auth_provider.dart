@@ -24,8 +24,9 @@ class AuthProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final schoolGuid = prefs.getString('schoolGuid');
     final grade = prefs.getString('grade');
+    final ruCode = prefs.getString('ruCode');
     if (schoolGuid != null && schoolGuid.isNotEmpty && grade != null && grade.isNotEmpty) {
-      _examService.setContext(schoolGuid: schoolGuid, grade: grade);
+      _examService.setContext(schoolGuid: schoolGuid, grade: grade, ruCode: ruCode);
     }
   }
 
@@ -54,7 +55,7 @@ class AuthProvider extends ChangeNotifier {
       final user = await _authService.getUserInfo();
       if (user != null) {
         _user = user;
-        // 保存 schoolGuid 和 grade 到 SharedPreferences
+        // 保存业务上下文到 SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         if (user.schoolGuid != null && user.schoolGuid!.isNotEmpty) {
           await prefs.setString('schoolGuid', user.schoolGuid!);
@@ -62,8 +63,11 @@ class AuthProvider extends ChangeNotifier {
         if (user.grade != null && user.grade!.isNotEmpty) {
           await prefs.setString('grade', user.grade!);
         }
+        if (user.ruCode != null && user.ruCode!.isNotEmpty) {
+          await prefs.setString('ruCode', user.ruCode!);
+        }
         // 更新 ExamService 上下文
-        _examService.setContext(schoolGuid: user.schoolGuid, grade: user.grade);
+        _examService.setContext(schoolGuid: user.schoolGuid, grade: user.grade, ruCode: user.ruCode);
         notifyListeners();
       }
     } catch (_) {}
@@ -79,7 +83,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       if (user != null) {
         _user = user;
-        // 保存 schoolGuid 和 grade 到 SharedPreferences
+        // 保存业务上下文到 SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         if (user.schoolGuid != null && user.schoolGuid!.isNotEmpty) {
           await prefs.setString('schoolGuid', user.schoolGuid!);
@@ -87,8 +91,11 @@ class AuthProvider extends ChangeNotifier {
         if (user.grade != null && user.grade!.isNotEmpty) {
           await prefs.setString('grade', user.grade!);
         }
+        if (user.ruCode != null && user.ruCode!.isNotEmpty) {
+          await prefs.setString('ruCode', user.ruCode!);
+        }
         // 更新 ExamService 上下文
-        _examService.setContext(schoolGuid: user.schoolGuid, grade: user.grade);
+        _examService.setContext(schoolGuid: user.schoolGuid, grade: user.grade, ruCode: user.ruCode);
         notifyListeners();
         return true;
       }
@@ -107,6 +114,7 @@ class AuthProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('schoolGuid');
     await prefs.remove('grade');
+    await prefs.remove('ruCode');
     notifyListeners();
   }
 
