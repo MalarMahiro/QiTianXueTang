@@ -93,31 +93,72 @@ class ExamService {
       logger.debug('Exam', 'ScoreReport JSON keys: ${raw.keys.toList()}');
       logger.debug('Exam', 'ScoreReport 原始响应: $raw');
 
-      // 真实结构（与官方JS一致）: {km_list:[{km,scoreInfo,summary,...}], km_info:{...}}
-      // 摊平"总分"条目 + 组装各科列表，再交给防御性字段映射
+      // 真实结构（与官方JS一致）: {km_info:{score,fullScore,grade}, km_list:[{km,score,fullScore,grade,...}], other}
       final flat = Map<String, dynamic>.from(raw);
       final kmList = raw['km_list'];
       if (kmList is List && kmList.isNotEmpty) {
-        Map<String, dynamic> pickTotal() {
-          for (final e in kmList) {
-            if (e is Map && e['km'] == '总分') {
-              return e.cast<String, dynamic>();
-            }
-          }
-          return (kmList.first as Map).cast<String, dynamic>();
-        }
-        final total = pickTotal();
-        flat.addAll(((total['scoreInfo'] as Map?) ?? const {}).cast<String, dynamic>());
-        flat.addAll(((total['summary'] as Map?) ?? const {}).cast<String, dynamic>());
-        flat.addAll(total); // 条目上的直接字段也并入(km/rating等)
-        flat['km'] = total['km'];
-        // 各科列表: 排除总分条目, 条目字段直接就是 km/score/fullScore/grade...
-        flat['subjects'] = kmList
+        final subjects = kmList
             .whereType<Map>()
             .where((e) => e['km'] != '总分')
             .map((e) => e.cast<String, dynamic>())
             .toList();
-        logger.debug('Exam', 'km_list ${kmList.length} 条, 已摊平总分与各科');
+        Map<String, dynamic>? totalEntry;
+        for (final e in kmList) {
+          if (e is Map && e['km'] == '总分') {
+            totalEntry = e.cast<String, dynamic>();
+            break;
+          }
+        }
+
+        // 总分取值优先级: km_info → km_list"总分"条目 → 各科求和兜底。
+        // 部分考试官方不提供总分数据(总分/满分为0或缺失), 此时按单科求和
+        double? totalScore;
+        double? totalFull;
+        final kmInfo = raw['km_info'];
+        if (kmInfo is Map) {
+          totalScore = double.tryParse(kmInfo['score']?.toString() ?? '');
+          totalFull = double.tryParse(kmInfo['fullScore']?.toString() ?? '');
+        }
+        if (totalEntry != null) {
+          if (totalScore == null || totalScore == 0) {
+            totalScore = double.tryParse(totalEntry['score']?.toString() ?? '');
+          }
+          if (totalFull == null || totalFull == 0) {
+            totalFull = double.tryParse(totalEntry['fullScore']?.toString() ?? '');
+          }
+        }
+        if (totalScore == null ||
+            totalScore == 0 ||
+            totalFull == null ||
+            totalFull == 0) {
+          double sumScore = 0, sumFull = 0;
+          var hasScore = false, hasFull = false;
+          for (final s in subjects) {
+            final sc = double.tryParse(s['score']?.toString() ?? '');
+            final fu = double.tryParse(s['fullScore']?.toString() ?? '');
+            if (sc != null) {
+              sumScore += sc;
+              hasScore = true;
+            }
+            if (fu != null) {
+              sumFull += fu;
+              hasFull = true;
+            }
+          }
+          if (totalScore == null || totalScore == 0) {
+            totalScore = hasScore ? sumScore : null;
+          }
+          if (totalFull == null || totalFull == 0) {
+            totalFull = hasFull ? sumFull : null;
+          }
+          logger.debug('Exam',
+              '官方未提供总分数据, 已按各科求和: 总分=$totalScore 满分=$totalFull');
+        }
+
+        flat['studentScore'] = totalScore;
+        flat['totalScore'] = totalFull;
+        flat['subjects'] = subjects;
+        logger.debug('Exam', 'km_list ${kmList.length} 条, 总分=$totalScore/$totalFull');
       }
 
       final exam = ExamModel.fromDetailJson(flat);
