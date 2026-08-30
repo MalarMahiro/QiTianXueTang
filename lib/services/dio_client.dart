@@ -456,7 +456,8 @@ class DioClient {
 
   /// 获取单科列表 (请求侧GCM加密): POST Question/Subjects
   /// 官方JS实参: {examGuid, schoolGuid, grade:currentGrade, schoolRuCode:ruCode}
-  Future<List<Map<String, dynamic>>?> getSubjects({
+  /// 返回完整结构 {list:[...], exam_info:{...}}
+  Future<Map<String, dynamic>?> getSubjects({
     required String examGuid,
     required String schoolGuid,
     required String grade,
@@ -488,16 +489,59 @@ class DioClient {
         ),
       );
       final d = _dataOf(resp.data);
+      // 返回完整结构 {list:[...], exam_info:{...}}: responseGuid 在 list 条目上,
+      // ruleHash 在 exam_info 上, 答题卡接口都需要
       if (d is Map) {
         final list = d['list'];
-        if (list is List) {
-          logger.debug('HTTP', 'Subjects 解密字段: ${list.length} 个科目');
-          return list.cast<Map<String, dynamic>>();
-        }
+        logger.debug('HTTP', 'Subjects 解析字段: ${list is List ? list.length : 0} 个科目, exam_info: ${d['exam_info']?.keys.toList()}');
+        return d.cast<String, dynamic>();
       }
       return null;
     } catch (e) {
-      logger.error('HTTP', 'getSubjects 失败', e);
+      logger.error('HTTP', '获取单科列表失败', e);
+      return null;
+    }
+  }
+
+  /// 获取答题卡图片地址 (请求侧GCM加密): POST Question/AnswerCardUrl
+  /// 官方JS实参: {examGuid, responseGuid, schoolGuid, grade, ruleHash,
+  ///              isWatermark:false, schoolRuCode}
+  Future<Map<String, dynamic>?> getAnswerCardUrl({
+    required String examGuid,
+    required String responseGuid,
+    required String schoolGuid,
+    required String grade,
+    required String ruleHash,
+    required String ruCode,
+  }) async {
+    try {
+      await _ensureSessionKey();
+
+      final iv = SecureCrypto.generateIv();
+      final ivBytes = base64.decode(iv);
+      final pairs = [
+        'examGuid=$examGuid',
+        'responseGuid=$responseGuid',
+        'schoolGuid=$schoolGuid',
+        'grade=$grade',
+        'ruleHash=$ruleHash',
+        'isWatermark=false',
+        'schoolRuCode=$ruCode',
+      ];
+      logger.debug('HTTP', 'AnswerCardUrl bp 明文: ${pairs.join(';')}');
+      final bp = SecureCrypto.aesGcmEncrypt(pairs.join(';'), ivBytes);
+      final resp = await _dio.post(
+        '${ApiConfig.baseScore}${ApiConfig.questionAnswerCardUrl}',
+        options: Options(headers: {
+          'bn': iv,
+          'bp': bp,
+        }),
+      );
+      final d = _dataOf(resp.data);
+      logger.debug('HTTP', 'AnswerCardUrl 响应: $d');
+      return d is Map ? d.cast<String, dynamic>() : null;
+    } catch (e) {
+      logger.error('HTTP', '获取答题卡失败', e);
       return null;
     }
   }

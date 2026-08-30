@@ -135,6 +135,20 @@ class ExamService {
   Future<List<Map<String, dynamic>>?> getSubjectList(String examId) async {
     try {
       if (schoolGuid.isEmpty || grade.isEmpty) return null;
+      final raw = await getSubjectsFull(examId);
+      final list = raw?['list'];
+      if (list is List) return list.cast<Map<String, dynamic>>();
+      return null;
+    } catch (e) {
+      logger.error('Exam', '获取单科列表失败', e);
+      return null;
+    }
+  }
+
+  /// Subjects 完整响应: {list:[{km,responseGuid,...}], exam_info:{ruleHash,...}}
+  Future<Map<String, dynamic>?> getSubjectsFull(String examId) async {
+    try {
+      if (schoolGuid.isEmpty || grade.isEmpty) return null;
       final raw = await _client.getSubjects(
         examGuid: examId,
         schoolGuid: schoolGuid,
@@ -142,10 +156,52 @@ class ExamService {
         ruCode: ruCode,
       );
       if (raw == null) return null;
-      logger.debug('Exam', 'Subjects 原始数据: $raw');
+      logger.debug('Exam', 'Subjects 完整数据: $raw');
       return raw;
     } catch (e) {
-      logger.error('Exam', '获取单科列表失败', e);
+      logger.error('Exam', '获取单科数据失败', e);
+      return null;
+    }
+  }
+
+  /// 答题卡: Subjects(取 responseGuid/ruleHash) → Question/AnswerCardUrl
+  Future<Map<String, dynamic>?> getAnswerSheet(String examId, String km) async {
+    try {
+      final raw = await getSubjectsFull(examId);
+      if (raw == null) return null;
+
+      String responseGuid = '';
+      String ruleHash = '';
+      final list = raw['list'];
+      if (list is List) {
+        for (final e in list) {
+          if (e is Map && (e['km'] == km || (km == '总分' && e['kmTag'] != null))) {
+            responseGuid = e['responseGuid']?.toString() ?? '';
+            break;
+          }
+        }
+      }
+      final examInfo = raw['exam_info'];
+      if (examInfo is Map) {
+        ruleHash = examInfo['ruleHash']?.toString() ??
+            examInfo['RuleHash']?.toString() ??
+            '';
+      }
+      if (responseGuid.isEmpty) {
+        logger.warn('Exam', 'Subjects 中未找到 km=$km 的 responseGuid');
+        return {'error': '未找到该科目的答卷数据'};
+      }
+
+      return await _client.getAnswerCardUrl(
+        examGuid: examId,
+        responseGuid: responseGuid,
+        schoolGuid: schoolGuid,
+        grade: grade,
+        ruleHash: ruleHash,
+        ruCode: ruCode,
+      );
+    } catch (e) {
+      logger.error('Exam', '获取答题卡失败: $e');
       return null;
     }
   }

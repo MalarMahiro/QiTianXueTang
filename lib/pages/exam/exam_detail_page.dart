@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../providers/exam_provider.dart';
-import 'exam_subject_detail_page.dart';
+import 'answer_sheet_page.dart';
 
 class ExamDetailPage extends StatefulWidget {
   final String examId;
@@ -108,10 +108,10 @@ class _ExamDetailPageState extends State<ExamDetailPage> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => ExamSubjectDetailPage(
-                                examId: exam.examId,
+                              builder: (_) => AnswerSheetPage(
+                                examId: widget.examId,
                                 examName: exam.examName,
-                                subjectName: subject.subjectName,
+                                km: subject.subjectName,
                               ),
                             ),
                           );
