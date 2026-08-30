@@ -1,11 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:gal/gal.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../config/theme.dart';
 import '../../services/exam_service.dart';
@@ -100,6 +100,22 @@ class _AnswerSheetPageState extends State<AnswerSheetPage> {
 
   Future<void> _saveCurrent() async {
     if (_imageUrls.isEmpty || _saving) return;
+
+    // Android 9 及以下写相册需要存储权限, 10+ 走 MediaStore 无需授权
+    if (Platform.isAndroid) {
+      final sdkInt = int.tryParse(Platform.version.split('.').first) ?? 30;
+      if (sdkInt < 29) {
+        final hasAccess = await Gal.requestAccess();
+        if (!hasAccess) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('未授予存储权限，无法保存')));
+          }
+          return;
+        }
+      }
+    }
+
     setState(() => _saving = true);
     try {
       final url = _imageUrls[_pageIndex];
@@ -107,16 +123,20 @@ class _AnswerSheetPageState extends State<AnswerSheetPage> {
         url,
         options: Options(responseType: ResponseType.bytes),
       );
-      final dir = await getTemporaryDirectory();
-      final file = File(
-          '${dir.path}/答题卡_${widget.km}_${_pageIndex + 1}.jpg');
-      await file.writeAsBytes(resp.data!);
-      await Share.shareXFiles([XFile(file.path)], text: '${widget.km} 答题卡');
+      await Gal.putImageBytes(
+        Uint8List.fromList(resp.data!),
+        name: '答题卡_${widget.km}_${_pageIndex + 1}.jpg',
+        album: '七天学堂',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已保存到系统相册（七天学堂相册）')));
+      }
     } catch (e) {
       logger.error('AnswerSheet', '保存失败', e);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('保存失败: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

@@ -525,7 +525,9 @@ class DioClient {
         'schoolGuid=$schoolGuid',
         'grade=$grade',
         'ruleHash=$ruleHash',
-        'isWatermark=false',
+        // 官方安卓端固定传 true: 服务端据此把得分标注层(红色每题得分/卷面
+        // 满分summary)烤进扫描图, 传 false 拿到的是无标注干净版
+        'isWatermark=true',
         'schoolRuCode=$ruCode',
       ];
       logger.debug('HTTP', 'AnswerCardUrl bp 明文: ${pairs.join(';')}');
