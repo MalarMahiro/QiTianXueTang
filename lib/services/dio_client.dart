@@ -200,13 +200,57 @@ class DioClient {
     onUnauthorized?.call(message);
 
 
-      onError: (error, handler) {
+      onError: (error, handler) async {
+        final code = error.response?.statusCode;
+        final path = error.requestOptions.path;
+        // 401 静默重登: 用保存的密码重登拿新 token 后原请求重放一次
+        if (code == 401 &&
+            error.requestOptions.extra['__retried'] != true &&
+            reloginProvider != null) {
+          logger.warn('HTTP', '401, 尝试静默重登后重放: $path');
+          String? newToken;
+          try {
+            newToken = await reloginProvider!();
+          } catch (e) {
+            logger.warn('HTTP', '静默重登异常: $e');
+          }
+          if (newToken != null && newToken.isNotEmpty) {
+            final opts = error.requestOptions;
+            opts.extra['__retried'] = true;
+            opts.headers['Token'] = newToken;
+            try {
+              final resp = await _dio.fetch(opts);
+              logger.debug('HTTP', '静默重登后重试成功: $path');
+              return handler.resolve(resp);
+            } catch (e) {
+              logger.warn('HTTP', '重放仍失败: $e');
+            }
+          }
+        }
+        if (code == 401) {
+          _fireUnauthorized(error.response?.data is Map
+              ? (error.response!.data['message']?.toString() ?? '')
+              : '');
+        }
         logger.warn(
             'HTTP', '✗ ${error.response?.statusCode} ${error.requestOptions.path}: ${error.message}');
         handler.next(error);
       },
     ));
  main
+  }
+
+  /// 登录态失效(5秒去重): 清token并通知UI层提示
+  void _fireUnauthorized(String message) {
+    final now = DateTime.now();
+    if (_lastUnauthorizedAt != null &&
+        now.difference(_lastUnauthorizedAt!) < const Duration(seconds: 5)) {
+      return;
+    }
+    _lastUnauthorizedAt = now;
+    logger.warn('HTTP', '登录态失效: $message');
+    clearToken();
+    onUnauthorized?.call(message);
   }
 
   /// 登录(表单)并保存token
@@ -256,7 +300,7 @@ class DioClient {
   bool _isNegotiating = false;
   Completer<void>? _negotiationCompleter;
 
-  /// 确保会话级 AES key 有效（冷启动后重新协商）
+  /// 确保会话級 AES key 有效（冷启动后重新协商）
   Future<void> _ensureSessionKey() async {
     if (SecureCrypto.hasKey) return;
     if (_isNegotiating) {
@@ -532,6 +576,10 @@ class DioClient {
       final iv = SecureCrypto.generateIv();
       final ivBytes = base64.decode(iv);
  fix/exam-report-and-release-crash
+ fix/exam-report-and-release-crash
+
+
+ main
       // 官方加密payload格式(非JSON!): "k=v;k=v" 分号连接, 见原App septnetlive aesEncrypt
       final pairs = [
         'examGuid=$examGuid',
@@ -543,6 +591,7 @@ class DioClient {
       logger.debug('HTTP', 'ScoreReport bp 明文: ${pairs.join(';')}');
       final bp = SecureCrypto.aesGcmEncrypt(pairs.join(';'), ivBytes);
 
+ fix/exam-report-and-release-crash
       final params = jsonEncode({
         'examGuid': examGuid,
         'schoolGuid': schoolGuid,
@@ -551,6 +600,8 @@ class DioClient {
       // 业务日志（可在拦截器中统一打印，这里保留用于调试）
       logger.debug('HTTP', 'ScoreReport bp 明文: $params');
       final bp = SecureCrypto.aesGcmEncrypt(params, ivBytes);
+ main
+
  main
       final resp = await _dio.post(
         '${ApiConfig.baseScore}${ApiConfig.questionScoreReport}',
@@ -577,6 +628,7 @@ class DioClient {
   /// 返回完整结构 {list:[...], exam_info:{...}}
   Future<Map<String, dynamic>?> getSubjects({
     required String examGuid,
+ fix/exam-report-and-release-crash
     required String schoolGuid,
     required String grade,
     required String ruCode,
@@ -666,3 +718,5 @@ class DioClient {
     }
   }
 }
+
+ main
