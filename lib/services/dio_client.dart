@@ -38,6 +38,17 @@ class DioClient {
 
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        // ===== 打印请求基本信息 =====
+        logger.debug('HTTP', '╔═══════════════════════════════════════════════');
+        logger.debug('HTTP', '║ [REQUEST] ${options.method} ${options.baseUrl}${options.path}');
+        logger.debug('HTTP', '║ Headers:');
+        options.headers.forEach((key, value) {
+          logger.debug('HTTP', '║   $key: $value');
+        });
+        if (options.data != null) {
+          logger.debug('HTTP', '║ Body: ${options.data}');
+        }
+
         // 认证头 Token(非Bearer)。优先内存缓存，其次secure storage。
         var token = _memToken;
         if (token == null) {
@@ -49,15 +60,39 @@ class DioClient {
         if (token != null && token.isNotEmpty) {
           options.headers['Token'] = token;
         }
+
         // 若已协商会话AES key，附带 bk 头（供带bn的isEncrypt接口使用）
         if (SecureCrypto.hasKey) {
-          options.headers['bk'] = SecureCrypto.buildBk();
+          final bk = SecureCrypto.buildBk();
+          options.headers['bk'] = bk;
+          logger.debug('HTTP', '║ [CRYPTO] bk: $bk');
         }
-        logger.debug('HTTP', '→ ${options.method} ${options.baseUrl}${options.path}');
+
+        // 如果有 bn 和 bp 头（请求加密），打印它们
+        if (options.headers.containsKey('bn')) {
+          logger.debug('HTTP', '║ [CRYPTO] bn: ${options.headers['bn']}');
+        }
+        if (options.headers.containsKey('bp')) {
+          logger.debug('HTTP', '║ [CRYPTO] bp: ${options.headers['bp']}');
+        }
+        logger.debug('HTTP', '╚═══════════════════════════════════════════════');
+
         handler.next(options);
       },
+
       onResponse: (response, handler) async {
-        logger.debug('HTTP', '← ${response.statusCode} ${response.requestOptions.path}');
+        logger.debug('HTTP', '╔═══════════════════════════════════════════════');
+        logger.debug('HTTP', '║ [RESPONSE] ${response.requestOptions.method} ${response.requestOptions.uri}');
+        logger.debug('HTTP', '║ Status Code: ${response.statusCode}');
+        logger.debug('HTTP', '║ Headers:');
+        response.headers.forEach((key, values) {
+          logger.debug('HTTP', '║   $key: $values');
+        });
+
+        // 保存原始响应体（可能是加密的字符串或Map）
+        var rawData = response.data;
+        logger.debug('HTTP', '║ Raw Response Body: $rawData');
+
         // 统一兜底：JSON 响应体可能以原始 String 形式返回(响应没带 application/json content-type，
         // 导致 Dio 不做自动解析)。根因修复——所有下游都依赖 body 是 Map/List。
         if (response.data is String) {
@@ -67,6 +102,7 @@ class DioClient {
             if (decoded is Map || decoded is List) response.data = decoded;
           } catch (_) {}
         }
+
         // 解密响应体: data.isEncrypt==true → AES解密 content
         try {
           final data = response.data;
@@ -78,22 +114,27 @@ class DioClient {
               if (inner['bn'] != null) {
                 // 带 bn(iv) → 会话AES key + GCM
                 decrypted = SecureCrypto.aesGcmDecrypt(content, inner['bn'].toString());
+                logger.debug('HTTP', '║ [CRYPTO] GCM Decrypted content: $decrypted');
               } else {
                 // 无 bn → 固定 AES key + ECB
                 decrypted = QitianCrypto.aesEcbDecryptBase64(content);
+                logger.debug('HTTP', '║ [CRYPTO] ECB Decrypted content: $decrypted');
               }
               inner['content'] = decrypted;
               try {
                 inner['decryptedData'] =
                     (jsonDecode(decrypted) as Map).cast<String, dynamic>();
+                logger.debug('HTTP', '║ [CRYPTO] Decrypted Data: ${inner['decryptedData']}');
               } catch (_) {}
             }
           }
         } catch (e) {
-          logger.warn('HTTP', '响应解密失败: $e');
+          logger.warn('HTTP', '║ 响应解密失败: $e');
         }
+        logger.debug('HTTP', '╚═══════════════════════════════════════════════');
         handler.next(response);
       },
+
       onError: (error, handler) {
         logger.warn(
             'HTTP', '✗ ${error.response?.statusCode} ${error.requestOptions.path}: ${error.message}');
@@ -426,6 +467,7 @@ class DioClient {
         'schoolGuid': schoolGuid,
         'grade': grade,
       });
+      // 业务日志（可在拦截器中统一打印，这里保留用于调试）
       logger.debug('HTTP', 'ScoreReport bp 明文: $params');
       final bp = SecureCrypto.aesGcmEncrypt(params, ivBytes);
       final resp = await _dio.post(
@@ -436,7 +478,7 @@ class DioClient {
         }),
       );
       final d = _dataOf(resp.data);
-      logger.debug('HTTP', 'ScoreReport 原始响应: ${resp.data}');
+      // 业务日志，拦截器已经打印详细信息，这里可以简化或保留
       logger.debug('HTTP', 'ScoreReport 解析后: $d');
       if (d is Map) {
         logger.debug('HTTP', 'ScoreReport 解密字段: ${d.keys.toList()}');
