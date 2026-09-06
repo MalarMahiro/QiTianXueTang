@@ -247,7 +247,7 @@ class DioClient {
   bool _isNegotiating = false;
   Completer<void>? _negotiationCompleter;
 
-  /// 确保会话级 AES key 有效（冷启动后重新协商）
+  /// 确保会话級 AES key 有效（冷启动后重新协商）
   Future<void> _ensureSessionKey() async {
     if (SecureCrypto.hasKey) return;
     if (_isNegotiating) {
@@ -558,92 +558,3 @@ class DioClient {
   /// 返回完整结构 {list:[...], exam_info:{...}}
   Future<Map<String, dynamic>?> getSubjects({
     required String examGuid,
-    required String schoolGuid,
-    required String grade,
-    required String ruCode,
-  }) async {
-    try {
-      // 冷启动后会话密钥可能丢失，确保有效
-      await _ensureSessionKey();
-
-      final iv = SecureCrypto.generateIv();
-      final ivBytes = base64.decode(iv);
-      // 官方加密payload格式(非JSON!): "k=v;k=v" 分号连接
-      final pairs = [
-        'examGuid=$examGuid',
-        'schoolGuid=$schoolGuid',
-        'grade=$grade',
-        'schoolRuCode=$ruCode',
-      ];
-      logger.debug('HTTP', 'Subjects bp 明文: ${pairs.join(';')}');
-      final bp = SecureCrypto.aesGcmEncrypt(pairs.join(';'), ivBytes);
-      final resp = await _dio.post(
-        '${ApiConfig.baseScore}${ApiConfig.questionSubjects}',
-        options: Options(
-          contentType: Headers.formUrlEncodedContentType,
-          headers: {
-            'bn': iv,
-            'bp': bp,
-          },
-        ),
-      );
-      final d = _dataOf(resp.data);
-      // 返回完整结构 {list:[...], exam_info:{...}}: responseGuid 在 list 条目上,
-      // ruleHash 在 exam_info 上, 答题卡接口都需要
-      if (d is Map) {
-        final list = d['list'];
-        logger.debug('HTTP', 'Subjects 解析字段: ${list is List ? list.length : 0} 个科目, exam_info: ${d['exam_info']?.keys.toList()}');
-        return d.cast<String, dynamic>();
-      }
-      return null;
-    } catch (e) {
-      logger.error('HTTP', '获取单科列表失败', e);
-      return null;
-    }
-  }
-
-  /// 获取答题卡图片地址 (请求侧GCM加密): POST Question/AnswerCardUrl
-  /// 官方JS实参: {examGuid, responseGuid, schoolGuid, grade, ruleHash,
-  ///              isWatermark:false, schoolRuCode}
-  Future<Map<String, dynamic>?> getAnswerCardUrl({
-    required String examGuid,
-    required String responseGuid,
-    required String schoolGuid,
-    required String grade,
-    required String ruleHash,
-    required String ruCode,
-  }) async {
-    try {
-      await _ensureSessionKey();
-
-      final iv = SecureCrypto.generateIv();
-      final ivBytes = base64.decode(iv);
-      final pairs = [
-        'examGuid=$examGuid',
-        'responseGuid=$responseGuid',
-        'schoolGuid=$schoolGuid',
-        'grade=$grade',
-        'ruleHash=$ruleHash',
-        // 官方安卓端固定传 true: 服务端据此把得分标注层(红色每题得分/卷面
-        // 满分summary)烤进扫描图, 传 false 拿到的是无标注干净版
-        'isWatermark=true',
-        'schoolRuCode=$ruCode',
-      ];
-      logger.debug('HTTP', 'AnswerCardUrl bp 明文: ${pairs.join(';')}');
-      final bp = SecureCrypto.aesGcmEncrypt(pairs.join(';'), ivBytes);
-      final resp = await _dio.post(
-        '${ApiConfig.baseScore}${ApiConfig.questionAnswerCardUrl}',
-        options: Options(headers: {
-          'bn': iv,
-          'bp': bp,
-        }),
-      );
-      final d = _dataOf(resp.data);
-      logger.debug('HTTP', 'AnswerCardUrl 响应: $d');
-      return d is Map ? d.cast<String, dynamic>() : null;
-    } catch (e) {
-      logger.error('HTTP', '获取答题卡失败', e);
-      return null;
-    }
-  }
-}
