@@ -150,4 +150,5 @@ API 按业务拆分子域名，均可在 `lib/config/api.dart` 中修改：
 
 ## 许可
 
+GPL-3.0 license
 本代码仅供学习参考，请勿用于商业用途。
